@@ -1,0 +1,44 @@
+[
+  {
+    "key": "gpio_pin",
+    "type": "int",
+    "default": 17,
+    "description": "GPIO-Pin, der die simulierte D+-Leitung schaltet."
+  },
+  {
+    "key": "target_voltage",
+    "type": "float",
+    "default": 3.3,
+    "description": "Zielspannung in Volt, die durch die Simulation angestrebt wird."
+  },
+  {
+    "key": "hysteresis",
+    "type": "float",
+    "default": 0.1,
+    "description": "Hystereseband in Volt, bevor der GPIO neu geschaltet wird."
+  },
+  {
+    "key": "activation_delay_seconds",
+    "type": "float",
+    "default": 2.0,
+    "description": "Verzögerung in Sekunden, bevor der GPIO bei steigender Spannung eingeschaltet wird."
+  },
+  {
+    "key": "deactivation_delay_seconds",
+    "type": "float",
+    "default": 5.0,
+    "description": "Verzögerung in Sekunden, bevor der GPIO bei fallender Spannung ausgeschaltet wird."
+  },
+  {
+    "key": "dbus_bus",
+    "type": "string",
+    "default": "system",
+    "description": "Zu verwendender D-Bus (system oder session)."
+  },
+  {
+    "key": "status_publish_interval",
+    "type": "float",
+    "default": 2.0,
+    "description": "Intervall in Sekunden zur Veröffentlichung des Status über D-Bus-Signale."
+  }
+]

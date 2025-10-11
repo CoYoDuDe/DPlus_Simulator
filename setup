@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="${SCRIPT_DIR}"
+INSTALL_ROOT="${INSTALL_ROOT:-/opt/dplus_sim}"
+SERVICE_NAME="com.coyodude.dplussim"
+SYSTEMD_DIR="${SYSTEMD_DIR:-/etc/systemd/system}"
+SERVICE_FILE="${SYSTEMD_DIR}/${SERVICE_NAME}.service"
+SETTINGS_PATH="${SETTINGS_PATH:-/etc/dplus_sim/settings.json}"
+
+log() {
+  local level="$1"
+  shift
+  printf '[%s] %s\n' "${level}" "$*"
+}
+
+copy_tree() {
+  local src="$1"
+  local dest="$2"
+  mkdir -p "${dest}"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "${src}/" "${dest}/"
+  else
+    tar -C "${src}" -cf - . | tar -C "${dest}" -xf -
+  fi
+}
+
+ensure_settings() {
+  local config_path="$1"
+  if [[ -f "${config_path}" ]]; then
+    return
+  fi
+  mkdir -p "$(dirname "${config_path}")"
+  log INFO "Erzeuge Standard-Konfiguration unter ${config_path}"
+  python3 "${INSTALL_ROOT}/src/dplus_sim.py" --config "${config_path}" --write-defaults --dry-run
+}
+
+install_service() {
+  log INFO "Installiere Dateien nach ${INSTALL_ROOT}"
+  mkdir -p "${INSTALL_ROOT}"
+  copy_tree "${PROJECT_ROOT}/src" "${INSTALL_ROOT}/src"
+  copy_tree "${PROJECT_ROOT}/services" "${INSTALL_ROOT}/services"
+  install -m 644 "${PROJECT_ROOT}/src/settings_schema.json" "${INSTALL_ROOT}/settings_schema.json"
+  install -m 644 "${PROJECT_ROOT}/version" "${INSTALL_ROOT}/version"
+  install -m 644 "${PROJECT_ROOT}/packageDependencies" "${INSTALL_ROOT}/packageDependencies"
+  install -m 644 "${PROJECT_ROOT}/gitHubInfo" "${INSTALL_ROOT}/gitHubInfo"
+  install -m 644 "${PROJECT_ROOT}/settingsList" "${INSTALL_ROOT}/settingsList"
+  if [[ -d "${PROJECT_ROOT}/FileSets" ]]; then
+    copy_tree "${PROJECT_ROOT}/FileSets" "${INSTALL_ROOT}/FileSets"
+  fi
+
+  ensure_settings "${SETTINGS_PATH}"
+
+  if command -v systemctl >/dev/null 2>&1; then
+    log INFO "Registriere systemd-Dienst ${SERVICE_NAME}"
+    mkdir -p "${SYSTEMD_DIR}"
+    cat <<SERVICE > "${SERVICE_FILE}"
+[Unit]
+Description=DPlus Simulator Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=${INSTALL_ROOT}/services/com.coyodude.dplussim/run --config ${SETTINGS_PATH}
+ExecStop=${INSTALL_ROOT}/services/com.coyodude.dplussim/down
+Restart=on-failure
+User=${SERVICE_USER:-root}
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+    systemctl daemon-reload
+    if [[ "${ENABLE_SERVICE:-1}" -eq 1 ]]; then
+      systemctl enable --now "${SERVICE_NAME}" || log WARN "Konnte Dienst nicht starten (benötigt Root?)"
+    fi
+  else
+    log WARN "systemctl nicht verfügbar – bitte Dienst manuell starten"
+  fi
+
+  mkdir -p "${INSTALL_ROOT}/uninstall"
+  cat <<'HOOK' > "${INSTALL_ROOT}/uninstall/${SERVICE_NAME}.sh"
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl disable --now com.coyodude.dplussim 2>/dev/null || true
+  systemctl daemon-reload
+  rm -f /etc/systemd/system/com.coyodude.dplussim.service
+fi
+rm -rf /opt/dplus_sim
+rm -f /etc/dplus_sim/settings.json
+HOOK
+  chmod +x "${INSTALL_ROOT}/uninstall/${SERVICE_NAME}.sh"
+  log INFO "Installation abgeschlossen"
+}
+
+uninstall_service() {
+  log INFO "Starte Deinstallation"
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl disable --now "${SERVICE_NAME}" 2>/dev/null || true
+    rm -f "${SERVICE_FILE}"
+    systemctl daemon-reload || true
+  fi
+  rm -rf "${INSTALL_ROOT}"
+  rm -f "${SETTINGS_PATH}"
+  log INFO "Deinstallation abgeschlossen"
+}
+
+status_service() {
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl status "${SERVICE_NAME}" || true
+  else
+    log INFO "systemctl nicht verfügbar"
+  fi
+}
+
+usage() {
+  cat <<USAGE
+Verwendung: $0 <install|uninstall|status>
+USAGE
+}
+
+main() {
+  local action="${1:-install}"
+  case "${action}" in
+    install)
+      install_service
+      ;;
+    uninstall)
+      uninstall_service
+      ;;
+    status)
+      status_service
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
