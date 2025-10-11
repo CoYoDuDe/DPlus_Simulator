@@ -1,44 +1,44 @@
 [
   {
-    "key": "gpio_pin",
-    "type": "int",
+    "path": "/Settings/Devices/DPlusSim/GpioPin",
+    "type": "i",
     "default": 17,
     "description": "GPIO-Pin, der die simulierte D+-Leitung schaltet."
   },
   {
-    "key": "target_voltage",
-    "type": "float",
+    "path": "/Settings/Devices/DPlusSim/TargetVoltage",
+    "type": "d",
     "default": 3.3,
     "description": "Zielspannung in Volt, die durch die Simulation angestrebt wird."
   },
   {
-    "key": "hysteresis",
-    "type": "float",
+    "path": "/Settings/Devices/DPlusSim/Hysteresis",
+    "type": "d",
     "default": 0.1,
     "description": "Hystereseband in Volt, bevor der GPIO neu geschaltet wird."
   },
   {
-    "key": "activation_delay_seconds",
-    "type": "float",
+    "path": "/Settings/Devices/DPlusSim/ActivationDelaySeconds",
+    "type": "d",
     "default": 2.0,
     "description": "Verzögerung in Sekunden, bevor der GPIO bei steigender Spannung eingeschaltet wird."
   },
   {
-    "key": "deactivation_delay_seconds",
-    "type": "float",
+    "path": "/Settings/Devices/DPlusSim/DeactivationDelaySeconds",
+    "type": "d",
     "default": 5.0,
     "description": "Verzögerung in Sekunden, bevor der GPIO bei fallender Spannung ausgeschaltet wird."
   },
   {
-    "key": "dbus_bus",
-    "type": "string",
-    "default": "system",
-    "description": "Zu verwendender D-Bus (system oder session)."
-  },
-  {
-    "key": "status_publish_interval",
-    "type": "float",
+    "path": "/Settings/Devices/DPlusSim/StatusPublishInterval",
+    "type": "d",
     "default": 2.0,
     "description": "Intervall in Sekunden zur Veröffentlichung des Status über D-Bus-Signale."
+  },
+  {
+    "path": "/Settings/Devices/DPlusSim/DbusBus",
+    "type": "s",
+    "default": "system",
+    "description": "Zu verwendender D-Bus (system oder session)."
   }
 ]
