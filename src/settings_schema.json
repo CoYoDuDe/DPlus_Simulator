@@ -28,6 +28,39 @@
       "minimum": 0.0,
       "description": "Verzögerung in Sekunden, bevor der GPIO deaktiviert wird."
     },
+    "on_voltage": {
+      "type": "number",
+      "minimum": 0.0,
+      "description": "Schaltschwelle für das Einschalten der D+-Simulation."
+    },
+    "off_voltage": {
+      "type": "number",
+      "minimum": 0.0,
+      "description": "Schaltschwelle für das Ausschalten der D+-Simulation."
+    },
+    "on_delay_seconds": {
+      "type": "number",
+      "minimum": 0.0,
+      "description": "Verzögerung in Sekunden bis zum Einschalten."
+    },
+    "off_delay_seconds": {
+      "type": "number",
+      "minimum": 0.0,
+      "description": "Verzögerung in Sekunden bis zum Ausschalten."
+    },
+    "use_ignition": {
+      "type": "boolean",
+      "description": "Aktiviert den Zündplus-Eingang als zusätzliche Einschaltbedingung."
+    },
+    "ignition_gpio": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "GPIO-Pin für das Zündplus-Signal."
+    },
+    "force_on": {
+      "type": "boolean",
+      "description": "Erzwingt ein dauerhaft eingeschaltetes Ausgangssignal."
+    },
     "dbus_bus": {
       "type": "string",
       "enum": ["system", "session"],
@@ -45,6 +78,13 @@
     "hysteresis",
     "activation_delay_seconds",
     "deactivation_delay_seconds",
+    "on_voltage",
+    "off_voltage",
+    "on_delay_seconds",
+    "off_delay_seconds",
+    "use_ignition",
+    "ignition_gpio",
+    "force_on",
     "dbus_bus",
     "status_publish_interval"
   ],

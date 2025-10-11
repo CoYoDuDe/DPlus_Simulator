@@ -21,7 +21,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 import math
 
@@ -73,36 +73,90 @@ except Exception:  # pragma: no-cover - Entwicklungsfallback
     _RPiGPIO = None
 
 
+DEFAULT_GPIO_PIN = 17
+DEFAULT_TARGET_VOLTAGE = 3.3
+DEFAULT_HYSTERESIS = 0.1
+DEFAULT_ACTIVATION_DELAY_SECONDS = 2.0
+DEFAULT_DEACTIVATION_DELAY_SECONDS = 5.0
+DEFAULT_ON_VOLTAGE = DEFAULT_TARGET_VOLTAGE + DEFAULT_HYSTERESIS / 2.0
+DEFAULT_OFF_VOLTAGE = DEFAULT_TARGET_VOLTAGE - DEFAULT_HYSTERESIS / 2.0
+DEFAULT_ON_DELAY_SECONDS = DEFAULT_ACTIVATION_DELAY_SECONDS
+DEFAULT_OFF_DELAY_SECONDS = DEFAULT_DEACTIVATION_DELAY_SECONDS
+DEFAULT_IGNITION_GPIO = 4
+
+
 SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     "gpio_pin": {
         "path": "/Settings/Devices/DPlusSim/GpioPin",
         "type": "i",
-        "default": 17,
+        "default": DEFAULT_GPIO_PIN,
         "description": "GPIO-Pin, der die simulierte D+-Leitung schaltet.",
     },
     "target_voltage": {
         "path": "/Settings/Devices/DPlusSim/TargetVoltage",
         "type": "d",
-        "default": 3.3,
+        "default": DEFAULT_TARGET_VOLTAGE,
         "description": "Zielspannung in Volt, die durch die Simulation angestrebt wird.",
     },
     "hysteresis": {
         "path": "/Settings/Devices/DPlusSim/Hysteresis",
         "type": "d",
-        "default": 0.1,
+        "default": DEFAULT_HYSTERESIS,
         "description": "Hystereseband in Volt, bevor der GPIO neu geschaltet wird.",
     },
     "activation_delay_seconds": {
         "path": "/Settings/Devices/DPlusSim/ActivationDelaySeconds",
         "type": "d",
-        "default": 2.0,
+        "default": DEFAULT_ACTIVATION_DELAY_SECONDS,
         "description": "Verzögerung in Sekunden, bevor der GPIO bei steigender Spannung eingeschaltet wird.",
     },
     "deactivation_delay_seconds": {
         "path": "/Settings/Devices/DPlusSim/DeactivationDelaySeconds",
         "type": "d",
-        "default": 5.0,
+        "default": DEFAULT_DEACTIVATION_DELAY_SECONDS,
         "description": "Verzögerung in Sekunden, bevor der GPIO bei fallender Spannung ausgeschaltet wird.",
+    },
+    "on_voltage": {
+        "path": "/Settings/Devices/DPlusSim/OnVoltage",
+        "type": "d",
+        "default": DEFAULT_ON_VOLTAGE,
+        "description": "Spannung, ab der die D+-Simulation aktiviert werden soll.",
+    },
+    "off_voltage": {
+        "path": "/Settings/Devices/DPlusSim/OffVoltage",
+        "type": "d",
+        "default": DEFAULT_OFF_VOLTAGE,
+        "description": "Spannung, unter der die D+-Simulation deaktiviert wird.",
+    },
+    "on_delay_seconds": {
+        "path": "/Settings/Devices/DPlusSim/OnDelaySec",
+        "type": "d",
+        "default": DEFAULT_ON_DELAY_SECONDS,
+        "description": "Verzögerung in Sekunden bis zum Einschalten, sobald alle Bedingungen erfüllt sind.",
+    },
+    "off_delay_seconds": {
+        "path": "/Settings/Devices/DPlusSim/OffDelaySec",
+        "type": "d",
+        "default": DEFAULT_OFF_DELAY_SECONDS,
+        "description": "Verzögerung in Sekunden bis zum Ausschalten, wenn die Bedingungen entfallen.",
+    },
+    "use_ignition": {
+        "path": "/Settings/Devices/DPlusSim/UseIgnition",
+        "type": "b",
+        "default": False,
+        "description": "Aktiviert die Abhängigkeit vom Zündplus-Eingang.",
+    },
+    "ignition_gpio": {
+        "path": "/Settings/Devices/DPlusSim/IgnitionGpio",
+        "type": "i",
+        "default": DEFAULT_IGNITION_GPIO,
+        "description": "GPIO-Pin, an dem das Zündplus-Signal eingelesen wird.",
+    },
+    "force_on": {
+        "path": "/Settings/Devices/DPlusSim/ForceOn",
+        "type": "b",
+        "default": False,
+        "description": "Erzwingt dauerhaft ein aktives D+-Signal, unabhängig von den Eingangswerten.",
     },
     "status_publish_interval": {
         "path": "/Settings/Devices/DPlusSim/StatusPublishInterval",
@@ -508,63 +562,151 @@ class GPIOController:
         self._state = False
 
 
+class GPIOInput:
+    def __init__(self, pin: int, *, enabled: bool = True, pull_up: bool = False) -> None:
+        self._logger = logging.getLogger(self.__class__.__name__)
+        self._pin = int(pin)
+        self._enabled = enabled and _RPiGPIO is not None
+        self._pull_up = pull_up
+        self._state = False
+        if self._enabled:
+            self._configure_hardware()
+
+    def _configure_hardware(self) -> None:
+        if not self._enabled:
+            return
+        pud = _RPiGPIO.PUD_UP if self._pull_up else _RPiGPIO.PUD_DOWN
+        _RPiGPIO.setup(self._pin, _RPiGPIO.IN, pull_up_down=pud)
+
+    @property
+    def pin(self) -> int:
+        return self._pin
+
+    def reconfigure(self, new_pin: int) -> None:
+        new_pin = int(new_pin)
+        if new_pin == self._pin:
+            return
+        self._logger.info("GPIO-Eingang wird von Pin %s auf Pin %s umkonfiguriert", self._pin, new_pin)
+        if self._enabled:
+            _RPiGPIO.cleanup(self._pin)
+            self._pin = new_pin
+            self._configure_hardware()
+        else:
+            self._pin = new_pin
+
+    def read(self) -> bool:
+        if self._enabled:
+            return bool(_RPiGPIO.input(self._pin))
+        return self._state
+
+    def simulate(self, state: bool) -> None:
+        if self._enabled:
+            self._logger.warning(
+                "Simulierter Zustand für GPIO-Eingang %s wurde angefordert, aber Hardware ist aktiv – Befehl wird ignoriert",
+                self._pin,
+            )
+            return
+        self._state = bool(state)
+
+    def close(self) -> None:
+        if self._enabled:
+            self._logger.debug("GPIO-Eingang %s wird freigegeben", self._pin)
+            _RPiGPIO.cleanup(self._pin)
+
+
 @dataclass
-class HysteresisWindow:
-    target: float
+class SwitchLogic:
+    on_threshold: float
+    off_threshold: float
     hysteresis: float
-    activation_delay: float
-    deactivation_delay: float
+    on_delay: float
+    off_delay: float
     state: bool = False
     pending_state: Optional[bool] = None
     deadline: Optional[float] = None
 
     def configure(
         self,
-        target: float,
+        on_threshold: float,
+        off_threshold: float,
         hysteresis: float,
-        activation_delay: float,
-        deactivation_delay: float,
+        on_delay: float,
+        off_delay: float,
     ) -> None:
-        self.target = target
+        self.on_threshold = on_threshold
+        self.off_threshold = off_threshold
         self.hysteresis = hysteresis
-        self.activation_delay = activation_delay
-        self.deactivation_delay = deactivation_delay
+        self.on_delay = on_delay
+        self.off_delay = off_delay
         self.pending_state = None
         self.deadline = None
 
-    def evaluate(self, voltage: float, now: float) -> Dict[str, Any]:
-        upper = self.target + self.hysteresis / 2.0
-        lower = self.target - self.hysteresis / 2.0
+    def _compute_thresholds(self) -> Tuple[float, float]:
+        upper = float(self.on_threshold)
+        lower = float(self.off_threshold)
+        if self.hysteresis > 0:
+            half = self.hysteresis / 2.0
+            upper += half
+            lower -= half
+        if upper < lower:
+            midpoint = (upper + lower) / 2.0
+            upper = midpoint
+            lower = midpoint
+        return upper, lower
+
+    def thresholds(self) -> Tuple[float, float]:
+        return self._compute_thresholds()
+
+    def evaluate(self, voltage: float, now: float, allow_on: bool, force_on: bool) -> Dict[str, Any]:
+        upper, lower = self._compute_thresholds()
         changed = False
 
-        if self.state:
-            if voltage <= lower:
+        if force_on:
+            if not self.state:
+                changed = True
+            self.state = True
+            self.pending_state = None
+            self.deadline = None
+        elif not allow_on:
+            if self.state:
                 if self.pending_state is not False:
                     self.pending_state = False
-                    self.deadline = now + self.deactivation_delay
+                    self.deadline = now + self.off_delay
                 elif self.deadline is not None and now >= self.deadline:
                     self.state = False
                     self.pending_state = None
                     self.deadline = None
                     changed = True
             else:
-                if self.pending_state is False:
+                if self.pending_state is not None:
                     self.pending_state = None
                     self.deadline = None
+        elif self.state:
+            if voltage <= lower:
+                if self.pending_state is not False:
+                    self.pending_state = False
+                    self.deadline = now + self.off_delay
+                elif self.deadline is not None and now >= self.deadline:
+                    self.state = False
+                    self.pending_state = None
+                    self.deadline = None
+                    changed = True
+            elif self.pending_state is False:
+                self.pending_state = None
+                self.deadline = None
         else:
             if voltage >= upper:
                 if self.pending_state is not True:
                     self.pending_state = True
-                    self.deadline = now + self.activation_delay
+                    self.deadline = now + self.on_delay
                 elif self.deadline is not None and now >= self.deadline:
                     self.state = True
                     self.pending_state = None
                     self.deadline = None
                     changed = True
-            else:
-                if self.pending_state is True:
-                    self.pending_state = None
-                    self.deadline = None
+            elif self.pending_state is True:
+                self.pending_state = None
+                self.deadline = None
 
         return {
             "state": self.state,
@@ -573,6 +715,8 @@ class HysteresisWindow:
             "changed": changed,
             "upper_threshold": upper,
             "lower_threshold": lower,
+            "force_on_active": force_on,
+            "allow_on": allow_on,
         }
 
 
@@ -585,8 +729,20 @@ class SimulatorStatus:
     hysteresis: float
     activation_delay_seconds: float
     deactivation_delay_seconds: float
+    on_voltage: float
+    off_voltage: float
+    on_delay_seconds: float
+    off_delay_seconds: float
     pending_state: Optional[bool] = None
     deadline: Optional[float] = None
+    effective_on_voltage: float = 0.0
+    effective_off_voltage: float = 0.0
+    ignition_enabled: bool = False
+    ignition_state: bool = False
+    ignition_gpio: int = 0
+    allow_on: bool = True
+    force_on_configured: bool = False
+    force_on_active: bool = False
     timestamp: float = field(default_factory=lambda: time.time())
     voltage_source: str = "manual"
     voltage_source_state: str = "manual"
@@ -601,8 +757,20 @@ class SimulatorStatus:
             "hysteresis": self.hysteresis,
             "activation_delay_seconds": self.activation_delay_seconds,
             "deactivation_delay_seconds": self.deactivation_delay_seconds,
+            "on_voltage": self.on_voltage,
+            "off_voltage": self.off_voltage,
+            "on_delay_seconds": self.on_delay_seconds,
+            "off_delay_seconds": self.off_delay_seconds,
             "pending_state": self.pending_state if self.pending_state is not None else "none",
             "deadline": self.deadline or 0.0,
+            "effective_on_voltage": self.effective_on_voltage,
+            "effective_off_voltage": self.effective_off_voltage,
+            "ignition_enabled": self.ignition_enabled,
+            "ignition_state": self.ignition_state,
+            "ignition_gpio": self.ignition_gpio,
+            "allow_on": self.allow_on,
+            "force_on": self.force_on_configured,
+            "force_on_active": self.force_on_active,
             "timestamp": self.timestamp,
             "voltage_source": self.voltage_source,
             "voltage_source_state": self.voltage_source_state,
@@ -616,12 +784,15 @@ class DPlusController:
         self._settings = DEFAULT_SETTINGS.copy()
         self._settings.update(settings)
         self._gpio = GPIOController(self._settings["gpio_pin"], enabled=use_gpio)
-        self._hysteresis = HysteresisWindow(
-            target=self._settings["target_voltage"],
+        self._ignition_input = GPIOInput(self._settings["ignition_gpio"], enabled=use_gpio)
+        self._switch = SwitchLogic(
+            on_threshold=self._resolve_on_voltage(),
+            off_threshold=self._resolve_off_voltage(),
             hysteresis=self._settings["hysteresis"],
-            activation_delay=self._settings["activation_delay_seconds"],
-            deactivation_delay=self._settings["deactivation_delay_seconds"],
+            on_delay=self._resolve_on_delay(),
+            off_delay=self._resolve_off_delay(),
         )
+        upper_threshold, lower_threshold = self._switch.thresholds()
         self._status = SimulatorStatus(
             running=False,
             voltage=0.0,
@@ -630,7 +801,17 @@ class DPlusController:
             hysteresis=self._settings["hysteresis"],
             activation_delay_seconds=self._settings["activation_delay_seconds"],
             deactivation_delay_seconds=self._settings["deactivation_delay_seconds"],
+            on_voltage=self._resolve_on_voltage(),
+            off_voltage=self._resolve_off_voltage(),
+            on_delay_seconds=self._resolve_on_delay(),
+            off_delay_seconds=self._resolve_off_delay(),
+            ignition_enabled=bool(self._settings["use_ignition"]),
+            ignition_gpio=int(self._settings["ignition_gpio"]),
+            force_on_configured=bool(self._settings["force_on"]),
         )
+        self._status.effective_on_voltage = upper_threshold
+        self._status.effective_off_voltage = lower_threshold
+        self._status.ignition_state = self._ignition_input.read()
         self._voltage = 0.0
         self._loop_task: Optional[asyncio.Task[None]] = None
         self._running = False
@@ -642,6 +823,30 @@ class DPlusController:
 
     def set_status_callback(self, callback: Optional[StatusCallback]) -> None:
         self._status_callback = callback
+
+    def _resolve_on_voltage(self) -> float:
+        value = self._settings.get("on_voltage")
+        if value is None:
+            return float(self._settings["target_voltage"] + self._settings["hysteresis"] / 2.0)
+        return float(value)
+
+    def _resolve_off_voltage(self) -> float:
+        value = self._settings.get("off_voltage")
+        if value is None:
+            return float(self._settings["target_voltage"] - self._settings["hysteresis"] / 2.0)
+        return float(value)
+
+    def _resolve_on_delay(self) -> float:
+        value = self._settings.get("on_delay_seconds")
+        if value is None:
+            return float(self._settings["activation_delay_seconds"])
+        return float(value)
+
+    def _resolve_off_delay(self) -> float:
+        value = self._settings.get("off_delay_seconds")
+        if value is None:
+            return float(self._settings["deactivation_delay_seconds"])
+        return float(value)
 
     async def set_voltage_provider(
         self,
@@ -694,18 +899,33 @@ class DPlusController:
     async def update_settings(self, new_settings: Dict[str, Any]) -> Dict[str, Any]:
         async with self._lock:
             self._settings.update(new_settings)
-            self._hysteresis.configure(
-                target=self._settings["target_voltage"],
+            self._switch.configure(
+                on_threshold=self._resolve_on_voltage(),
+                off_threshold=self._resolve_off_voltage(),
                 hysteresis=self._settings["hysteresis"],
-                activation_delay=self._settings["activation_delay_seconds"],
-                deactivation_delay=self._settings["deactivation_delay_seconds"],
+                on_delay=self._resolve_on_delay(),
+                off_delay=self._resolve_off_delay(),
             )
             if "gpio_pin" in new_settings:
                 self._gpio.reconfigure(int(self._settings["gpio_pin"]))
-            self._status.target_voltage = self._settings["target_voltage"]
-            self._status.hysteresis = self._settings["hysteresis"]
-            self._status.activation_delay_seconds = self._settings["activation_delay_seconds"]
-            self._status.deactivation_delay_seconds = self._settings["deactivation_delay_seconds"]
+            if "ignition_gpio" in new_settings:
+                self._ignition_input.reconfigure(int(self._settings["ignition_gpio"]))
+            self._status.target_voltage = float(self._settings["target_voltage"])
+            self._status.hysteresis = float(self._settings["hysteresis"])
+            self._status.activation_delay_seconds = float(
+                self._settings["activation_delay_seconds"]
+            )
+            self._status.deactivation_delay_seconds = float(
+                self._settings["deactivation_delay_seconds"]
+            )
+            self._status.on_voltage = self._resolve_on_voltage()
+            self._status.off_voltage = self._resolve_off_voltage()
+            self._status.on_delay_seconds = self._resolve_on_delay()
+            self._status.off_delay_seconds = self._resolve_off_delay()
+            self._status.ignition_enabled = bool(self._settings["use_ignition"])
+            self._status.ignition_gpio = int(self._settings["ignition_gpio"])
+            self._status.force_on_configured = bool(self._settings["force_on"])
+            self._evaluate_locked()
             await self._notify_status_locked()
             return self.get_status()
 
@@ -719,6 +939,7 @@ class DPlusController:
     async def shutdown(self) -> None:
         await self.stop()
         self._gpio.close()
+        self._ignition_input.close()
 
     def get_settings(self) -> Dict[str, Any]:
         return dict(self._settings)
@@ -787,18 +1008,29 @@ class DPlusController:
 
     def _evaluate_locked(self) -> None:
         now = time.monotonic()
-        hysteresis_state = self._hysteresis.evaluate(self._voltage, now)
-        if hysteresis_state["changed"]:
+        ignition_state = self._ignition_input.read() if self._ignition_input else False
+        ignition_required = bool(self._settings.get("use_ignition", False))
+        allow_on = (not ignition_required) or ignition_state
+        force_on = bool(self._settings.get("force_on", False))
+        switch_state = self._switch.evaluate(self._voltage, now, allow_on, force_on)
+        if switch_state["changed"]:
             self._logger.info(
                 "GPIO-Status wechselt zu %s (Spannung %.3f V)",
-                hysteresis_state["state"],
+                switch_state["state"],
                 self._voltage,
             )
-        self._gpio.write(hysteresis_state["state"])
+        self._gpio.write(switch_state["state"])
         self._status.gpio_state = self._gpio.read()
         self._status.voltage = self._voltage
-        self._status.pending_state = hysteresis_state["pending_state"]
-        self._status.deadline = hysteresis_state["deadline"] or 0.0
+        self._status.pending_state = switch_state["pending_state"]
+        self._status.deadline = switch_state["deadline"] or 0.0
+        self._status.effective_on_voltage = switch_state["upper_threshold"]
+        self._status.effective_off_voltage = switch_state["lower_threshold"]
+        self._status.ignition_enabled = ignition_required
+        self._status.ignition_state = ignition_state
+        self._status.allow_on = switch_state["allow_on"]
+        self._status.force_on_active = switch_state["force_on_active"]
+        self._status.force_on_configured = force_on
         self._status.timestamp = time.time()
 
     async def _notify_status_locked(self) -> None:
