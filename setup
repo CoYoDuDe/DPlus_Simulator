@@ -4,10 +4,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
 INSTALL_ROOT="${INSTALL_ROOT:-/opt/dplus_sim}"
-SETTINGS_PATH="${SETTINGS_PATH:-/etc/dplus_sim/settings.json}"
 SERVICE_NAME="com.coyodude.dplussim"
 SERVICE_SOURCE_DIR="${PROJECT_ROOT}/services/${SERVICE_NAME}"
 HELPER_RESOURCE="/data/SetupHelper/HelperResources/forSetupScript"
+SETTINGS_BASE_PATH="/Settings/Devices/DPlusSim"
 
 log() {
   local level="$1"
@@ -24,16 +24,6 @@ copy_tree() {
   else
     tar -C "${src}" -cf - . | tar -C "${dest}" -xf -
   fi
-}
-
-ensure_settings() {
-  local config_path="$1"
-  if [[ -f "${config_path}" ]]; then
-    return
-  fi
-  mkdir -p "$(dirname "${config_path}")"
-  log INFO "Erzeuge Standard-Konfiguration unter ${config_path}"
-  python3 "${INSTALL_ROOT}/src/dplus_sim.py" --config "${config_path}" --write-defaults --dry-run
 }
 
 source_setup_helper() {
@@ -76,11 +66,12 @@ perform_install() {
     copy_tree "${PROJECT_ROOT}/FileSets" "${INSTALL_ROOT}/FileSets"
   fi
 
-  ensure_settings "${SETTINGS_PATH}"
-
   helper_begin
   helper_install_service "${SERVICE_NAME}" "${SERVICE_SOURCE_DIR}"
-  helper_register_settings "${PROJECT_ROOT}/settingsList" "${SETTINGS_PATH}"
+  if ! helper_register_settings "${PROJECT_ROOT}/settingsList" "${SETTINGS_BASE_PATH}"; then
+    log ERROR "helper_register_settings konnte Einstellungen nicht registrieren"
+    exit 1
+  fi
   helper_end
 
   log INFO "Installation abgeschlossen"
