@@ -1,9 +1,5 @@
-{
-  "system": [
-    "python3",
-    "python3-venv"
-  ],
-  "python": [
-    "dbus-next>=0.2.3"
-  ]
-}
+setuphelper=>=8.10
+platform=raspberrypi
+system=python3
+system=python3-venv
+python=dbus-next>=0.2.3

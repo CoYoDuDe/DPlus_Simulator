@@ -5,14 +5,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
 INSTALL_ROOT="${INSTALL_ROOT:-/opt/dplus_sim}"
 SERVICE_NAME="com.coyodude.dplussim"
-SERVICE_SOURCE_DIR="${PROJECT_ROOT}/services/${SERVICE_NAME}"
+SERVICE_INSTALL_DIR="${INSTALL_ROOT}/services/${SERVICE_NAME}"
 HELPER_RESOURCE="/data/SetupHelper/HelperResources/forSetupScript"
 SETTINGS_BASE_PATH="/Settings/Devices/DPlusSim"
+PACKAGE_DEPENDENCIES_FILE="${PROJECT_ROOT}/packageDependencies"
 
 log() {
   local level="$1"
   shift
   printf '[%s] %s\n' "${level}" "$*"
+}
+
+die() {
+  log ERROR "$*"
+  exit 1
 }
 
 copy_tree() {
@@ -26,32 +32,60 @@ copy_tree() {
   fi
 }
 
+require_helper_function() {
+  local fn="$1"
+  if ! declare -F "${fn}" >/dev/null; then
+    die "SetupHelper stellt die benötigte Funktion ${fn} nicht bereit"
+  fi
+}
+
 source_setup_helper() {
   if [[ ! -r "${HELPER_RESOURCE}" ]]; then
-    log ERROR "SetupHelper-Ressource ${HELPER_RESOURCE} nicht gefunden"
-    exit 1
+    die "SetupHelper-Ressource ${HELPER_RESOURCE} nicht gefunden"
   fi
   # shellcheck disable=SC1090
   source "${HELPER_RESOURCE}"
 
-  local required=(helper_begin helper_install_service helper_register_settings helper_end)
-  local missing=()
-  for fn in "${required[@]}"; do
-    if ! declare -F "${fn}" >/dev/null; then
-      missing+=("${fn}")
-    fi
+  local required_functions=(
+    helper_begin
+    helper_end
+    helper_install_service
+    helper_uninstall_service
+    helper_print_service_status
+    helper_register_settings
+    helper_unregister_settings
+  )
+  for fn in "${required_functions[@]}"; do
+    require_helper_function "${fn}"
   done
-  if (( ${#missing[@]} > 0 )); then
-    log ERROR "SetupHelper stellt folgende Funktionen nicht bereit: ${missing[*]}"
-    exit 1
+}
+
+register_package_dependencies() {
+  if [[ ! -f "${PACKAGE_DEPENDENCIES_FILE}" ]]; then
+    log WARN "packageDependencies-Datei fehlt, überspringe Registrierung"
+    return
+  fi
+
+  if declare -F helper_enable_dependency_conflict_checks >/dev/null; then
+    helper_enable_dependency_conflict_checks
+  elif declare -F helper_enable_package_conflict_checks >/dev/null; then
+    helper_enable_package_conflict_checks
+  else
+    log WARN "SetupHelper bietet keine Konfliktprüfung, Registrierung läuft ohne zusätzliche Prüfung"
+  fi
+
+  if declare -F helper_register_package_dependencies >/dev/null; then
+    helper_register_package_dependencies "${PACKAGE_DEPENDENCIES_FILE}"
+  elif declare -F helper_use_package_dependencies >/dev/null; then
+    helper_use_package_dependencies "${PACKAGE_DEPENDENCIES_FILE}"
+  else
+    die "SetupHelper unterstützt das Registrieren von packageDependencies nicht"
   fi
 }
 
-perform_install() {
-  log INFO "Starte Installation in ${INSTALL_ROOT}"
+install_payload() {
+  log INFO "Installationsdateien nach ${INSTALL_ROOT} kopieren"
   mkdir -p "${INSTALL_ROOT}"
-
-  source_setup_helper
 
   copy_tree "${PROJECT_ROOT}/src" "${INSTALL_ROOT}/src"
   copy_tree "${PROJECT_ROOT}/services" "${INSTALL_ROOT}/services"
@@ -65,16 +99,74 @@ perform_install() {
   if [[ -d "${PROJECT_ROOT}/FileSets" ]]; then
     copy_tree "${PROJECT_ROOT}/FileSets" "${INSTALL_ROOT}/FileSets"
   fi
+}
 
+perform_install() {
   helper_begin
-  helper_install_service "${SERVICE_NAME}" "${SERVICE_SOURCE_DIR}"
-  if ! helper_register_settings "${PROJECT_ROOT}/settingsList" "${SETTINGS_BASE_PATH}"; then
-    log ERROR "helper_register_settings konnte Einstellungen nicht registrieren"
-    exit 1
-  fi
-  helper_end
+  register_package_dependencies
 
+  install_payload
+
+  helper_install_service "${SERVICE_NAME}" "${SERVICE_INSTALL_DIR}"
+  if ! helper_register_settings "${PROJECT_ROOT}/settingsList" "${SETTINGS_BASE_PATH}"; then
+    die "helper_register_settings konnte Einstellungen nicht registrieren"
+  fi
+
+  helper_end
   log INFO "Installation abgeschlossen"
 }
 
-perform_install
+perform_uninstall() {
+  helper_begin
+  register_package_dependencies
+
+  if ! helper_unregister_settings "${SETTINGS_BASE_PATH}"; then
+    log WARN "helper_unregister_settings konnte Einstellungen nicht deregistrieren"
+  fi
+  helper_uninstall_service "${SERVICE_NAME}"
+
+  if [[ -d "${INSTALL_ROOT}" ]]; then
+    log INFO "Entferne Installationsverzeichnis ${INSTALL_ROOT}"
+    rm -rf "${INSTALL_ROOT}"
+  fi
+
+  helper_end
+  log INFO "Deinstallation abgeschlossen"
+}
+
+perform_status() {
+  helper_begin
+  register_package_dependencies
+  helper_print_service_status "${SERVICE_NAME}"
+  helper_end
+}
+
+usage() {
+  cat <<USAGE
+Verwendung: ${0##*/} <install|uninstall|status>
+USAGE
+}
+
+main() {
+  local action="${1:-install}"
+
+  source_setup_helper
+
+  case "${action}" in
+    install)
+      perform_install
+      ;;
+    uninstall)
+      perform_uninstall
+      ;;
+    status)
+      perform_status
+      ;;
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"
