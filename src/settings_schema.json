@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DPlus Simulator Einstellungen",
+  "type": "object",
+  "properties": {
+    "gpio_pin": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "GPIO-Pin, der für die D+-Simulation genutzt wird."
+    },
+    "target_voltage": {
+      "type": "number",
+      "minimum": 0.0,
+      "description": "Zielspannung in Volt."
+    },
+    "hysteresis": {
+      "type": "number",
+      "minimum": 0.0,
+      "description": "Hystereseband in Volt für die Schaltlogik."
+    },
+    "activation_delay_seconds": {
+      "type": "number",
+      "minimum": 0.0,
+      "description": "Verzögerung in Sekunden, bevor der GPIO aktiviert wird."
+    },
+    "deactivation_delay_seconds": {
+      "type": "number",
+      "minimum": 0.0,
+      "description": "Verzögerung in Sekunden, bevor der GPIO deaktiviert wird."
+    },
+    "dbus_bus": {
+      "type": "string",
+      "enum": ["system", "session"],
+      "description": "Zu verwendender D-Bus."
+    },
+    "status_publish_interval": {
+      "type": "number",
+      "minimum": 0.2,
+      "description": "Intervall in Sekunden für Status-Signale."
+    }
+  },
+  "required": [
+    "gpio_pin",
+    "target_voltage",
+    "hysteresis",
+    "activation_delay_seconds",
+    "deactivation_delay_seconds",
+    "dbus_bus",
+    "status_publish_interval"
+  ],
+  "additionalProperties": false
+}
