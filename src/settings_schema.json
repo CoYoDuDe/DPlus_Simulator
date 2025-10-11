@@ -70,6 +70,14 @@
       "type": "number",
       "minimum": 0.2,
       "description": "Intervall in Sekunden für Status-Signale."
+    },
+    "service_path": {
+      "type": "string",
+      "description": "D-Bus-Service, aus dem die Spannung gelesen wird."
+    },
+    "voltage_path": {
+      "type": "string",
+      "description": "Objektpfad des Spannungswertes innerhalb des Dienstes."
     }
   },
   "required": [
@@ -86,7 +94,9 @@
     "ignition_gpio",
     "force_on",
     "dbus_bus",
-    "status_publish_interval"
+    "status_publish_interval",
+    "service_path",
+    "voltage_path"
   ],
   "additionalProperties": false
 }

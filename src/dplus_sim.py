@@ -13,17 +13,16 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
-import json
 import logging
+import math
 import os
+import queue
 import signal
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
-
-import math
 
 try:  # pragma: no-cover - optionale Abhängigkeiten
     from dbus_next import BusType, Message, Variant
@@ -72,6 +71,17 @@ try:  # pragma: no-cover - optional Abhängigkeit
 except Exception:  # pragma: no-cover - Entwicklungsfallback
     _RPiGPIO = None
 
+try:  # pragma: no-cover - optionale Abhängigkeiten für velib_python
+    import dbus  # type: ignore
+    from dbus.mainloop.glib import DBusGMainLoop  # type: ignore
+    from gi.repository import GLib  # type: ignore
+    from settingsdevice import SettingsDevice as VelibSettingsDevice  # type: ignore
+except Exception:  # pragma: no-cover - Fallback ohne velib_python
+    dbus = None  # type: ignore
+    DBusGMainLoop = None  # type: ignore
+    GLib = None  # type: ignore
+    VelibSettingsDevice = None  # type: ignore
+
 
 DEFAULT_GPIO_PIN = 17
 DEFAULT_TARGET_VOLTAGE = 3.3
@@ -91,96 +101,128 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "type": "i",
         "default": DEFAULT_GPIO_PIN,
         "description": "GPIO-Pin, der die simulierte D+-Leitung schaltet.",
+        "min": 0,
+        "max": 0,
     },
     "target_voltage": {
         "path": "/Settings/Devices/DPlusSim/TargetVoltage",
         "type": "d",
         "default": DEFAULT_TARGET_VOLTAGE,
         "description": "Zielspannung in Volt, die durch die Simulation angestrebt wird.",
+        "min": 0.0,
+        "max": 0.0,
     },
     "hysteresis": {
         "path": "/Settings/Devices/DPlusSim/Hysteresis",
         "type": "d",
         "default": DEFAULT_HYSTERESIS,
         "description": "Hystereseband in Volt, bevor der GPIO neu geschaltet wird.",
+        "min": 0.0,
+        "max": 0.0,
     },
     "activation_delay_seconds": {
         "path": "/Settings/Devices/DPlusSim/ActivationDelaySeconds",
         "type": "d",
         "default": DEFAULT_ACTIVATION_DELAY_SECONDS,
         "description": "Verzögerung in Sekunden, bevor der GPIO bei steigender Spannung eingeschaltet wird.",
+        "min": 0.0,
+        "max": 0.0,
     },
     "deactivation_delay_seconds": {
         "path": "/Settings/Devices/DPlusSim/DeactivationDelaySeconds",
         "type": "d",
         "default": DEFAULT_DEACTIVATION_DELAY_SECONDS,
         "description": "Verzögerung in Sekunden, bevor der GPIO bei fallender Spannung ausgeschaltet wird.",
+        "min": 0.0,
+        "max": 0.0,
     },
     "on_voltage": {
         "path": "/Settings/Devices/DPlusSim/OnVoltage",
         "type": "d",
         "default": DEFAULT_ON_VOLTAGE,
         "description": "Spannung, ab der die D+-Simulation aktiviert werden soll.",
+        "min": 0.0,
+        "max": 0.0,
     },
     "off_voltage": {
         "path": "/Settings/Devices/DPlusSim/OffVoltage",
         "type": "d",
         "default": DEFAULT_OFF_VOLTAGE,
         "description": "Spannung, unter der die D+-Simulation deaktiviert wird.",
+        "min": 0.0,
+        "max": 0.0,
     },
     "on_delay_seconds": {
         "path": "/Settings/Devices/DPlusSim/OnDelaySec",
         "type": "d",
         "default": DEFAULT_ON_DELAY_SECONDS,
         "description": "Verzögerung in Sekunden bis zum Einschalten, sobald alle Bedingungen erfüllt sind.",
+        "min": 0.0,
+        "max": 0.0,
     },
     "off_delay_seconds": {
         "path": "/Settings/Devices/DPlusSim/OffDelaySec",
         "type": "d",
         "default": DEFAULT_OFF_DELAY_SECONDS,
         "description": "Verzögerung in Sekunden bis zum Ausschalten, wenn die Bedingungen entfallen.",
+        "min": 0.0,
+        "max": 0.0,
     },
     "use_ignition": {
         "path": "/Settings/Devices/DPlusSim/UseIgnition",
         "type": "b",
         "default": False,
         "description": "Aktiviert die Abhängigkeit vom Zündplus-Eingang.",
+        "min": 0,
+        "max": 1,
     },
     "ignition_gpio": {
         "path": "/Settings/Devices/DPlusSim/IgnitionGpio",
         "type": "i",
         "default": DEFAULT_IGNITION_GPIO,
         "description": "GPIO-Pin, an dem das Zündplus-Signal eingelesen wird.",
+        "min": 0,
+        "max": 0,
     },
     "force_on": {
         "path": "/Settings/Devices/DPlusSim/ForceOn",
         "type": "b",
         "default": False,
         "description": "Erzwingt dauerhaft ein aktives D+-Signal, unabhängig von den Eingangswerten.",
+        "min": 0,
+        "max": 1,
     },
     "status_publish_interval": {
         "path": "/Settings/Devices/DPlusSim/StatusPublishInterval",
         "type": "d",
         "default": 2.0,
         "description": "Intervall in Sekunden zur Veröffentlichung des Status über D-Bus-Signale.",
+        "min": 0.2,
+        "max": 0.0,
     },
     "dbus_bus": {
         "path": "/Settings/Devices/DPlusSim/DbusBus",
         "type": "s",
         "default": "system",
         "description": "Zu verwendender D-Bus (system oder session).",
+        "min": 0,
+        "max": 0,
     },
     "service_path": {
         "path": "/Settings/Devices/DPlusSim/ServicePath",
         "type": "s",
         "default": "com.victronenergy.battery",
         "description": "D-Bus-Service, aus dem die Starterbatterie-Spannung gelesen wird.",
+        "min": 0,
+        "max": 0,
     },
     "voltage_path": {
         "path": "/Settings/Devices/DPlusSim/VoltagePath",
         "type": "s",
         "default": "/Dc/0/Voltage",
         "description": "Objektpfad des Spannungswertes innerhalb des Service.",
+        "min": 0,
+        "max": 0,
     },
 }
 
@@ -506,6 +548,248 @@ class SettingsBridge:
     @staticmethod
     def _unwrap_variant(value: Any) -> Any:
         return getattr(value, "value", value)
+
+    @staticmethod
+    def _coerce_value(type_code: str, value: Any) -> Any:
+        if type_code == "i":
+            return int(value)
+        if type_code in {"d", "f"}:
+            return float(value)
+        if type_code == "b":
+            return bool(value)
+        return str(value)
+
+    async def write_setting(self, key: str, value: Any) -> None:
+        if Message is None:
+            return
+        if key not in self._definitions:
+            return
+        meta = self._definitions[key]
+        typed_value = self._coerce_value(meta["type"], value)
+        try:
+            await self._bus.call(
+                Message(
+                    destination=self._service_name,
+                    path=meta["path"],
+                    interface="com.victronenergy.BusItem",
+                    member="SetValue",
+                    signature="v",
+                    body=[Variant(_variant_signature(typed_value), typed_value)],
+                )
+            )
+        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+            self._logger.warning(
+                "SetValue für %s ist fehlgeschlagen: %s",
+                meta["path"],
+                exc,
+            )
+
+    async def write_settings(self, updates: Dict[str, Any]) -> None:
+        if Message is None:
+            return
+        for key, value in updates.items():
+            await self.write_setting(key, value)
+
+
+class BaseSettingsAdapter:
+    """Abstraktion zur Verwaltung von Einstellungen über unterschiedliche Backends."""
+
+    def __init__(self) -> None:
+        self._callback: Optional[Callable[[str, Any], Awaitable[None] | None]] = None
+
+    def set_callback(
+        self, callback: Optional[Callable[[str, Any], Awaitable[None] | None]]
+    ) -> None:
+        self._callback = callback
+
+    async def start(self) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    async def apply(self, updates: Dict[str, Any]) -> None:
+        raise NotImplementedError
+
+    async def stop(self) -> None:
+        raise NotImplementedError
+
+    def _dispatch_update(self, key: str, value: Any) -> Optional[Awaitable[None]]:
+        callback = self._callback
+        if callback is None:
+            return None
+        result = callback(key, value)
+        return result if asyncio.iscoroutine(result) else None
+
+
+class DbusNextSettingsAdapter(BaseSettingsAdapter):
+    def __init__(self, bridge: SettingsBridge) -> None:
+        super().__init__()
+        self._bridge = bridge
+
+    async def start(self) -> Dict[str, Any]:
+        self._bridge.set_callback(self._handle_bridge_update)
+        return await self._bridge.start()
+
+    async def apply(self, updates: Dict[str, Any]) -> None:
+        await self._bridge.write_settings(updates)
+
+    async def stop(self) -> None:
+        await self._bridge.stop()
+
+    def _handle_bridge_update(self, key: str, value: Any) -> Optional[Awaitable[None]]:
+        return self._dispatch_update(key, value)
+
+
+class VelibSettingsAdapter(BaseSettingsAdapter):
+    """Verwaltung der Einstellungen über velib_python.SettingsDevice."""
+
+    def __init__(self, definitions: Dict[str, Dict[str, Any]], bus_choice: str) -> None:
+        super().__init__()
+        self._definitions = definitions
+        self._bus_choice = bus_choice
+        self._thread: Optional[threading.Thread] = None
+        self._main_loop: Optional[Any] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._start_future: Optional[asyncio.Future[Dict[str, Any]]] = None
+        self._command_queue: "queue.Queue[tuple[str, Any]]" = queue.Queue()
+        self._device: Optional[VelibSettingsDevice] = None
+        self._logger = logging.getLogger(self.__class__.__name__)
+
+    async def start(self) -> Dict[str, Any]:
+        if (
+            VelibSettingsDevice is None
+            or dbus is None
+            or DBusGMainLoop is None
+            or GLib is None
+        ):
+            raise RuntimeError("SettingsDevice ist nicht verfügbar")
+        loop = asyncio.get_running_loop()
+        self._loop = loop
+        future: asyncio.Future[Dict[str, Any]] = loop.create_future()
+        self._start_future = future
+        self._thread = threading.Thread(target=self._run, name="SettingsDevice", daemon=True)
+        self._thread.start()
+        return await future
+
+    async def apply(self, updates: Dict[str, Any]) -> None:
+        if not updates:
+            return
+        if self._loop is None:
+            raise RuntimeError("SettingsDevice wurde nicht initialisiert")
+        future: asyncio.Future[None] = self._loop.create_future()
+        self._command_queue.put(("apply", (dict(updates), future)))
+        await future
+
+    async def stop(self) -> None:
+        if self._loop is None:
+            return
+        future: asyncio.Future[None] = self._loop.create_future()
+        self._command_queue.put(("stop", future))
+        await future
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+            self._thread = None
+
+    def _run(self) -> None:
+        assert self._loop is not None
+        start_future = self._start_future
+        try:
+            assert VelibSettingsDevice is not None
+            assert DBusGMainLoop is not None
+            assert dbus is not None
+            assert GLib is not None
+            DBusGMainLoop(set_as_default=True)
+            bus = (
+                dbus.SystemBus()
+                if self._bus_choice.lower() != "session"
+                else dbus.SessionBus()
+            )
+            supported = self._build_supported_settings()
+            self._device = VelibSettingsDevice(bus, supported, self._handle_change)
+            initial = {
+                key: self._coerce_value(meta["type"], self._device[key])
+                for key, meta in self._definitions.items()
+            }
+            if start_future is not None and not start_future.done():
+                self._loop.call_soon_threadsafe(start_future.set_result, initial)
+            self._main_loop = GLib.MainLoop()
+            GLib.timeout_add(100, self._process_commands)
+            self._main_loop.run()
+        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+            if start_future is not None and not start_future.done():
+                self._loop.call_soon_threadsafe(start_future.set_exception, exc)
+            else:
+                self._logger.exception("SettingsDevice-Thread wurde mit Fehler beendet: %s", exc)
+        finally:
+            if start_future is not None and not start_future.done():
+                self._loop.call_soon_threadsafe(
+                    start_future.set_exception,
+                    RuntimeError("Initialisierung des SettingsDevice ist fehlgeschlagen"),
+                )
+
+    def _process_commands(self) -> bool:
+        processed_stop = False
+        while True:
+            try:
+                command, payload = self._command_queue.get_nowait()
+            except queue.Empty:
+                break
+            if command == "apply":
+                updates, future = payload
+                exc: Optional[BaseException] = None
+                try:
+                    self._apply_updates_sync(updates)
+                except Exception as err:  # pragma: no-cover - Laufzeitabhängig
+                    exc = err
+                    self._logger.warning("Konnte Einstellungen nicht schreiben: %s", err)
+                if self._loop is not None:
+                    if exc is None:
+                        self._loop.call_soon_threadsafe(future.set_result, None)
+                    else:
+                        self._loop.call_soon_threadsafe(future.set_exception, exc)
+            elif command == "stop":
+                future = payload
+                processed_stop = True
+                if self._loop is not None:
+                    self._loop.call_soon_threadsafe(future.set_result, None)
+            else:
+                self._logger.debug("Unbekannter Befehl für SettingsDevice: %s", command)
+        if processed_stop:
+            if self._main_loop is not None:
+                self._main_loop.quit()
+            return False
+        return True
+
+    def _apply_updates_sync(self, updates: Dict[str, Any]) -> None:
+        if self._device is None:
+            raise RuntimeError("SettingsDevice ist nicht verfügbar")
+        for key, value in updates.items():
+            if key not in self._definitions:
+                continue
+            typed_value = self._coerce_value(self._definitions[key]["type"], value)
+            self._device[key] = typed_value
+
+    def _handle_change(self, key: str, _old: Any, new: Any) -> None:
+        callback = self._callback
+        if callback is None or self._loop is None:
+            return
+        value = self._coerce_value(self._definitions[key]["type"], new)
+
+        def dispatch() -> None:
+            result = callback(key, value)
+            if asyncio.iscoroutine(result):
+                asyncio.create_task(result)
+
+        self._loop.call_soon_threadsafe(dispatch)
+
+    def _build_supported_settings(self) -> Dict[str, list[Any]]:
+        supported: Dict[str, list[Any]] = {}
+        for key, meta in self._definitions.items():
+            supported[key] = [
+                meta["path"],
+                meta["default"],
+                meta.get("min", 0),
+                meta.get("max", 0),
+            ]
+        return supported
 
     @staticmethod
     def _coerce_value(type_code: str, value: Any) -> Any:
@@ -1048,10 +1332,12 @@ class DPlusSimService(ServiceInterface):
         self,
         controller: DPlusController,
         shutdown_callback: Callable[[], None],
+        settings_persist: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
     ) -> None:
         super().__init__("com.coyodude.dplussim")
         self._controller = controller
         self._shutdown_callback = shutdown_callback
+        self._persist_settings = settings_persist
 
     @method()
     async def Start(self) -> bool:
@@ -1073,6 +1359,8 @@ class DPlusSimService(ServiceInterface):
     async def UpdateSettings(self, settings: "a{sv}") -> "a{sv}":  # type: ignore[override]
         normalized = normalize_variant_dict(settings)
         result = await self._controller.update_settings(normalized)
+        if self._persist_settings is not None:
+            await self._persist_settings(normalized)
         return dbusify(result)
 
     @method()
@@ -1094,17 +1382,6 @@ class DPlusSimService(ServiceInterface):
 
     def emit_status(self, status: Dict[str, Any]) -> None:
         self.StatusChanged(dbusify(status))
-
-
-def load_settings(path: Optional[Path]) -> Dict[str, Any]:
-    settings = DEFAULT_SETTINGS.copy()
-    if path and path.exists():
-        with path.open("r", encoding="utf-8") as handle:
-            file_settings = json.load(handle)
-        settings.update(file_settings)
-    return settings
-
-
 def setup_logging(level: str) -> None:
     numeric_level = getattr(logging, level.upper(), logging.INFO)
     logging.basicConfig(
@@ -1122,35 +1399,59 @@ def install_signal_handlers(loop: asyncio.AbstractEventLoop, stop_callback: Call
 
 
 async def run_async(args: argparse.Namespace) -> None:
-    config_path = Path(args.config) if args.config else None
-    base_settings = load_settings(config_path)
+    merged_settings = DEFAULT_SETTINGS.copy()
+    if args.bus:
+        merged_settings["dbus_bus"] = args.bus
 
+    settings_backend: Optional[BaseSettingsAdapter] = None
     settings_bus: Optional[MessageBus] = None
-    settings_bridge: Optional[SettingsBridge] = None
     settings_overrides: Dict[str, Any] = {}
-    if (
-        BusType is not None
-        and Message is not None
-        and not args.no_dbus
-    ):
-        try:
-            settings_bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
-            settings_bridge = SettingsBridge(settings_bus, SETTINGS_DEFINITIONS)
-            settings_overrides = await settings_bridge.start()
-        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
-            logging.getLogger("DPlusSim").warning(
-                "Konnte Einstellungen nicht mit com.victronenergy.settings synchronisieren: %s",
-                exc,
-            )
-            if settings_bus is not None:
-                disconnect = getattr(settings_bus, "disconnect", None)
-                if callable(disconnect):
-                    disconnect()
-            settings_bridge = None
-            settings_bus = None
-            settings_overrides = {}
 
-    merged_settings = base_settings.copy()
+    if not args.no_dbus:
+        if (
+            VelibSettingsDevice is not None
+            and dbus is not None
+            and DBusGMainLoop is not None
+            and GLib is not None
+        ):
+            try:
+                settings_backend = VelibSettingsAdapter(
+                    SETTINGS_DEFINITIONS,
+                    merged_settings.get("dbus_bus", "system"),
+                )
+                settings_overrides = await settings_backend.start()
+            except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+                logging.getLogger("DPlusSim").warning(
+                    "SettingsDevice konnte nicht initialisiert werden: %s",
+                    exc,
+                )
+                settings_backend = None
+                settings_overrides = {}
+        if (
+            settings_backend is None
+            and BusType is not None
+            and Message is not None
+        ):
+            try:
+                settings_bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+                bridge = SettingsBridge(settings_bus, SETTINGS_DEFINITIONS)
+                settings_backend = DbusNextSettingsAdapter(bridge)
+                settings_overrides = await settings_backend.start()
+            except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+                logging.getLogger("DPlusSim").warning(
+                    "Konnte Einstellungen nicht mit com.victronenergy.settings synchronisieren: %s",
+                    exc,
+                )
+                if settings_bus is not None:
+                    disconnect = getattr(settings_bus, "disconnect", None)
+                    if callable(disconnect):
+                        disconnect()
+                    with contextlib.suppress(Exception):
+                        await settings_bus.wait_for_disconnect()
+                settings_backend = None
+                settings_bus = None
+                settings_overrides = {}
+
     merged_settings.update(settings_overrides)
     if args.bus:
         merged_settings["dbus_bus"] = args.bus
@@ -1202,7 +1503,15 @@ async def run_async(args: argparse.Namespace) -> None:
 
     install_signal_handlers(loop, request_shutdown)
 
-    if settings_bridge is not None:
+    async def persist_settings(updates: Dict[str, Any]) -> None:
+        if not updates:
+            return
+        merged_settings.update(updates)
+        if settings_backend is not None:
+            await settings_backend.apply(updates)
+
+    if settings_backend is not None:
+
         async def handle_setting_update(key: str, value: Any) -> None:
             nonlocal voltage_reader
             if key == "dbus_bus":
@@ -1254,12 +1563,7 @@ async def run_async(args: argparse.Namespace) -> None:
                 )
                 return
 
-        settings_bridge.set_callback(handle_setting_update)
-
-    if config_path and args.write_defaults:
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-        with config_path.open("w", encoding="utf-8") as handle:
-            json.dump(controller.get_settings(), handle, indent=2, ensure_ascii=False)
+        settings_backend.set_callback(handle_setting_update)
 
     await controller.start()
 
@@ -1273,7 +1577,7 @@ async def run_async(args: argparse.Namespace) -> None:
                 else BusType.SESSION
             )
             bus = await MessageBus(bus_type=bus_type).connect()
-            service = DPlusSimService(controller, request_shutdown)
+            service = DPlusSimService(controller, request_shutdown, persist_settings)
             controller.set_status_callback(service.emit_status)
             bus.export("/com/coyodude/dplussim", service)
             await bus.request_name("com.coyodude.dplussim")
@@ -1299,8 +1603,8 @@ async def run_async(args: argparse.Namespace) -> None:
         await voltage_reader.close()
     if bus is not None:
         await bus.wait_for_disconnect()
-    if settings_bridge is not None:
-        await settings_bridge.stop()
+    if settings_backend is not None:
+        await settings_backend.stop()
     if settings_bus is not None:
         disconnect = getattr(settings_bus, "disconnect", None)
         if callable(disconnect):
@@ -1322,16 +1626,10 @@ async def simulate_waveform(controller: DPlusController, amplitude: float) -> No
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="DPlus Simulator Dienst")
-    parser.add_argument("--config", help="Pfad zur Einstellungsdatei", default=None)
     parser.add_argument("--bus", choices=("system", "session"), help="Zu verwendender D-Bus", default=None)
     parser.add_argument("--dry-run", action="store_true", help="GPIO-Befehle nicht an Hardware weiterreichen")
     parser.add_argument(
         "--no-dbus", action="store_true", help="D-Bus-Registrierung deaktivieren, auch wenn verfügbar"
-    )
-    parser.add_argument(
-        "--write-defaults",
-        action="store_true",
-        help="Aktuelle Einstellungen in die angegebene Datei schreiben",
     )
     parser.add_argument(
         "--simulate-waveform",

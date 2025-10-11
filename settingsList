@@ -1,86 +1,16 @@
-[
-  {
-    "path": "/Settings/Devices/DPlusSim/GpioPin",
-    "type": "i",
-    "default": 17,
-    "description": "GPIO-Pin, der die simulierte D+-Leitung schaltet."
-  },
-  {
-    "path": "/Settings/Devices/DPlusSim/TargetVoltage",
-    "type": "d",
-    "default": 3.3,
-    "description": "Zielspannung in Volt, die durch die Simulation angestrebt wird."
-  },
-  {
-    "path": "/Settings/Devices/DPlusSim/Hysteresis",
-    "type": "d",
-    "default": 0.1,
-    "description": "Hystereseband in Volt, bevor der GPIO neu geschaltet wird."
-  },
-  {
-    "path": "/Settings/Devices/DPlusSim/ActivationDelaySeconds",
-    "type": "d",
-    "default": 2.0,
-    "description": "Verzögerung in Sekunden, bevor der GPIO bei steigender Spannung eingeschaltet wird."
-  },
-  {
-    "path": "/Settings/Devices/DPlusSim/DeactivationDelaySeconds",
-    "type": "d",
-    "default": 5.0,
-    "description": "Verzögerung in Sekunden, bevor der GPIO bei fallender Spannung ausgeschaltet wird."
-  },
-  {
-    "path": "/Settings/Devices/DPlusSim/OnVoltage",
-    "type": "d",
-    "default": 3.35,
-    "description": "Spannung, ab der die D+-Simulation aktiviert werden soll."
-  },
-  {
-    "path": "/Settings/Devices/DPlusSim/OffVoltage",
-    "type": "d",
-    "default": 3.25,
-    "description": "Spannung, unter der die D+-Simulation deaktiviert wird."
-  },
-  {
-    "path": "/Settings/Devices/DPlusSim/OnDelaySec",
-    "type": "d",
-    "default": 2.0,
-    "description": "Verzögerung in Sekunden bis zum Einschalten, sobald alle Bedingungen erfüllt sind."
-  },
-  {
-    "path": "/Settings/Devices/DPlusSim/OffDelaySec",
-    "type": "d",
-    "default": 5.0,
-    "description": "Verzögerung in Sekunden bis zum Ausschalten, wenn die Bedingungen entfallen."
-  },
-  {
-    "path": "/Settings/Devices/DPlusSim/UseIgnition",
-    "type": "b",
-    "default": false,
-    "description": "Aktiviert die Abhängigkeit vom Zündplus-Eingang."
-  },
-  {
-    "path": "/Settings/Devices/DPlusSim/IgnitionGpio",
-    "type": "i",
-    "default": 4,
-    "description": "GPIO-Pin, an dem das Zündplus-Signal eingelesen wird."
-  },
-  {
-    "path": "/Settings/Devices/DPlusSim/ForceOn",
-    "type": "b",
-    "default": false,
-    "description": "Erzwingt dauerhaft ein aktives D+-Signal, unabhängig von Spannungs- und Zündplus-Bedingungen."
-  },
-  {
-    "path": "/Settings/Devices/DPlusSim/StatusPublishInterval",
-    "type": "d",
-    "default": 2.0,
-    "description": "Intervall in Sekunden zur Veröffentlichung des Status über D-Bus-Signale."
-  },
-  {
-    "path": "/Settings/Devices/DPlusSim/DbusBus",
-    "type": "s",
-    "default": "system",
-    "description": "Zu verwendender D-Bus (system oder session)."
-  }
-]
+/Settings/Devices/DPlusSim/GpioPin
+/Settings/Devices/DPlusSim/TargetVoltage
+/Settings/Devices/DPlusSim/Hysteresis
+/Settings/Devices/DPlusSim/ActivationDelaySeconds
+/Settings/Devices/DPlusSim/DeactivationDelaySeconds
+/Settings/Devices/DPlusSim/OnVoltage
+/Settings/Devices/DPlusSim/OffVoltage
+/Settings/Devices/DPlusSim/OnDelaySec
+/Settings/Devices/DPlusSim/OffDelaySec
+/Settings/Devices/DPlusSim/UseIgnition
+/Settings/Devices/DPlusSim/IgnitionGpio
+/Settings/Devices/DPlusSim/ForceOn
+/Settings/Devices/DPlusSim/StatusPublishInterval
+/Settings/Devices/DPlusSim/DbusBus
+/Settings/Devices/DPlusSim/ServicePath
+/Settings/Devices/DPlusSim/VoltagePath
