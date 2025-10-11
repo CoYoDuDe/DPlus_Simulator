@@ -8,6 +8,24 @@ SERVICE_NAME="com.coyodude.dplussim"
 SERVICE_INSTALL_DIR="${INSTALL_ROOT}/services/${SERVICE_NAME}"
 HELPER_RESOURCE="/data/SetupHelper/HelperResources/forSetupScript"
 SETTINGS_BASE_PATH="/Settings/Devices/DPlusSim"
+readarray -t SETTINGS_DEFINITIONS <<'SETTINGS'
+/Settings/Devices/DPlusSim/GpioPin|i|17|GPIO-Pin, der die simulierte D+-Leitung schaltet.
+/Settings/Devices/DPlusSim/TargetVoltage|d|3.3|Zielspannung in Volt, die durch die Simulation angestrebt wird.
+/Settings/Devices/DPlusSim/Hysteresis|d|0.1|Hystereseband in Volt, bevor der GPIO neu geschaltet wird.
+/Settings/Devices/DPlusSim/ActivationDelaySeconds|d|2.0|Verzögerung in Sekunden, bevor der GPIO bei steigender Spannung eingeschaltet wird.
+/Settings/Devices/DPlusSim/DeactivationDelaySeconds|d|5.0|Verzögerung in Sekunden, bevor der GPIO bei fallender Spannung ausgeschaltet wird.
+/Settings/Devices/DPlusSim/OnVoltage|d|3.35|Spannung, ab der die D+-Simulation aktiviert werden soll.
+/Settings/Devices/DPlusSim/OffVoltage|d|3.25|Spannung, unter der die D+-Simulation deaktiviert wird.
+/Settings/Devices/DPlusSim/OnDelaySec|d|2.0|Verzögerung in Sekunden bis zum Einschalten, sobald alle Bedingungen erfüllt sind.
+/Settings/Devices/DPlusSim/OffDelaySec|d|5.0|Verzögerung in Sekunden bis zum Ausschalten, wenn die Bedingungen entfallen.
+/Settings/Devices/DPlusSim/UseIgnition|b|false|Aktiviert die Abhängigkeit vom Zündplus-Eingang.
+/Settings/Devices/DPlusSim/IgnitionGpio|i|4|GPIO-Pin, an dem das Zündplus-Signal eingelesen wird.
+/Settings/Devices/DPlusSim/ForceOn|b|false|Erzwingt dauerhaft ein aktives D+-Signal.
+/Settings/Devices/DPlusSim/StatusPublishInterval|d|2.0|Intervall in Sekunden zur Veröffentlichung des Status über D-Bus-Signale.
+/Settings/Devices/DPlusSim/DbusBus|s|system|Zu verwendender D-Bus (system oder session).
+/Settings/Devices/DPlusSim/ServicePath|s|com.victronenergy.battery|D-Bus-Service, aus dem die Spannung gelesen wird.
+/Settings/Devices/DPlusSim/VoltagePath|s|/Dc/0/Voltage|Objektpfad des Spannungswertes.
+SETTINGS
 PACKAGE_DEPENDENCIES_FILE="${PROJECT_ROOT}/packageDependencies"
 
 log() {
@@ -108,9 +126,13 @@ perform_install() {
   install_payload
 
   helper_install_service "${SERVICE_NAME}" "${SERVICE_INSTALL_DIR}"
-  if ! helper_register_settings "${PROJECT_ROOT}/settingsList" "${SETTINGS_BASE_PATH}"; then
-    die "helper_register_settings konnte Einstellungen nicht registrieren"
-  fi
+
+  for entry in "${SETTINGS_DEFINITIONS[@]}"; do
+    IFS='|' read -r path type default description <<<"${entry}"
+    if ! helper_register_settings "${path}" "${type}" "${default}" "${description}"; then
+      die "helper_register_settings konnte Einstellung ${path} nicht registrieren"
+    fi
+  done
 
   helper_end
   log INFO "Installation abgeschlossen"

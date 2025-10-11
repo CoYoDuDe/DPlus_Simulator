@@ -7,6 +7,7 @@ Der DPlus Simulator stellt eine Software-Komponente bereit, mit der die D+-Signa
 - Simulation des D+-Signals über konfigurierbare Ansteuerung des Ausgangstreibers.
 - Frei definierbare Ein- und Ausschaltbedingungen inklusive optionaler Hysterese und Verzögerungen.
 - Verwaltung der Einstellungen über das Victron `com.victronenergy.settings`-Objekt.
+- Direkte Registrierung der Einstellungswerte über das Victron `SettingsDevice`, inklusive Live-Synchronisation mit dem Dienst.
 - Integration in das Venus OS durch Bereitstellung eines Services, der im Victron DBus sichtbar ist.
 - Optionaler Zündplus-Eingang als weitere Einschaltbedingung sowie ein erzwungener Dauerbetrieb.
 - Logging der Installations- und Laufzeitereignisse über den PackageManager sowie lokale Logdateien.
@@ -31,8 +32,10 @@ Die wichtigsten Schlüssel im Gerätekontext `Settings/Devices/DPlusSim` sind:
 | `UseIgnition` / `IgnitionGpio` | Aktiviert den Zündplus-Eingang und legt den Eingangspin fest. |
 | `ForceOn` | Erzwingt ein dauerhaft aktives Ausgangssignal. |
 | `StatusPublishInterval` | Aktualisierungsintervall der Statusmeldungen. |
+| `ServicePath` | D-Bus-Service, aus dem die Batteriespannung gelesen wird. |
+| `VoltagePath` | Objektpfad des Spannungswertes innerhalb des Dienstes. |
 
-Alle Werte lassen sich über den DBus-Explorer oder per `dbus-spy` anpassen.
+Alle Werte lassen sich über den DBus-Explorer oder per `dbus-spy` anpassen. Änderungen werden sofort vom Dienst übernommen und – dank `SettingsDevice` – dauerhaft im `com.victronenergy.settings`-Baum hinterlegt.
 
 ### Statusinformationen
 Der bereitgestellte DBus-Service `com.coyodude.dplussim` publiziert neben dem bisherigen Status zusätzliche Informationen:
