@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SERVICE_NAME="com.coyodude.dplussim"
+PIPE="/data/SetupHelper/HelperResources/serviceLogPipe"
+
+if [[ -x "${PIPE}" ]]; then
+  exec "${PIPE}" "${SERVICE_NAME}"
+fi
+
+if command -v svlogd >/dev/null 2>&1; then
+  exec svlogd -tt .
+fi
+
+exec logger -t "${SERVICE_NAME}" -p daemon.info
