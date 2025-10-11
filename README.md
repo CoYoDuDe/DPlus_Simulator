@@ -5,8 +5,10 @@ Der DPlus Simulator stellt eine Software-Komponente bereit, mit der die D+-Signa
 
 ## Funktionsumfang
 - Simulation des D+-Signals über konfigurierbare Ansteuerung des Ausgangstreibers.
+- Frei definierbare Ein- und Ausschaltbedingungen inklusive optionaler Hysterese und Verzögerungen.
 - Verwaltung der Einstellungen über das Victron `com.victronenergy.settings`-Objekt.
 - Integration in das Venus OS durch Bereitstellung eines Services, der im Victron DBus sichtbar ist.
+- Optionaler Zündplus-Eingang als weitere Einschaltbedingung sowie ein erzwungener Dauerbetrieb.
 - Logging der Installations- und Laufzeitereignisse über den PackageManager sowie lokale Logdateien.
 
 ## Installation
@@ -17,11 +19,29 @@ Die Installation erfolgt über den SetupHelper in Kombination mit dem Victron Pa
 4. Überprüfen Sie das PackageManager-Log, um den erfolgreichen Abschluss der Installation zu verifizieren.
 
 ### Konfigurationspfade
-Die Konfiguration erfolgt über den Victron DBus:
-- Pfad: `com.victronenergy.settings`
-- Relevante Schlüssel: `Settings/DPlusSimulator/Enable`, `Settings/DPlusSimulator/OutputMode`, `Settings/DPlusSimulator/SafetyTimeout`
+Die Konfiguration erfolgt über den Victron DBus (Service `com.victronenergy.settings`).
+Die wichtigsten Schlüssel im Gerätekontext `Settings/Devices/DPlusSim` sind:
 
-Die Werte können über den DBus-Explorer oder per `dbus-spy` angepasst werden.
+| Schlüssel | Beschreibung |
+|-----------|---------------|
+| `GpioPin` | GPIO-Ausgang, der das D+-Signal schaltet. |
+| `TargetVoltage` / `Hysteresis` | Legacy-Parameter für symmetrische Schaltschwellen (werden weiterhin ausgewertet). |
+| `OnVoltage` / `OffVoltage` | Getrennte Spannungen zum Ein- bzw. Ausschalten. |
+| `OnDelaySec` / `OffDelaySec` | Verzögerungen für das Ein- und Ausschalten. |
+| `UseIgnition` / `IgnitionGpio` | Aktiviert den Zündplus-Eingang und legt den Eingangspin fest. |
+| `ForceOn` | Erzwingt ein dauerhaft aktives Ausgangssignal. |
+| `StatusPublishInterval` | Aktualisierungsintervall der Statusmeldungen. |
+
+Alle Werte lassen sich über den DBus-Explorer oder per `dbus-spy` anpassen.
+
+### Statusinformationen
+Der bereitgestellte DBus-Service `com.coyodude.dplussim` publiziert neben dem bisherigen Status zusätzliche Informationen:
+- `effective_on_voltage` / `effective_off_voltage`: aktuell verwendete Schwellenwerte unter Berücksichtigung der Hysterese.
+- `ignition_state` und `ignition_enabled`: Zustand und Nutzung des Zündplus-Eingangs.
+- `allow_on`: Gibt an, ob die Einschaltbedingungen aktuell erfüllt sind.
+- `force_on` / `force_on_active`: Konfiguration und tatsächlicher Einsatz des erzwungenen Betriebs.
+
+Damit lassen sich die Entscheidungen des Reglers transparent nachverfolgen.
 
 ## Hardware-Verdrahtung
 - **Zündplus-Eingang**: Verwenden Sie einen Spannungsteiler oder einen Optokoppler, um das Eingangssignal auf das zulässige Spannungsniveau des GX-Geräts zu bringen.
