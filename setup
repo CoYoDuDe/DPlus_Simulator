@@ -109,24 +109,24 @@ EOF
   fi
 
   helper_register_settings <<'EOF'
-/Settings/Devices/DPlusSim/GpioPin|i|17
-/Settings/Devices/DPlusSim/TargetVoltage|f|3.3
-/Settings/Devices/DPlusSim/Hysteresis|f|0.1
-/Settings/Devices/DPlusSim/ActivationDelaySeconds|f|2.0
-/Settings/Devices/DPlusSim/DeactivationDelaySeconds|f|5.0
-/Settings/Devices/DPlusSim/OnVoltage|f|3.35
-/Settings/Devices/DPlusSim/OffVoltage|f|3.25
-/Settings/Devices/DPlusSim/OnDelaySec|f|2.0
-/Settings/Devices/DPlusSim/OffDelaySec|f|5.0
-/Settings/Devices/DPlusSim/UseIgnition|b|0
-/Settings/Devices/DPlusSim/IgnitionGpio|i|4
-/Settings/Devices/DPlusSim/IgnitionPull|s|down
-/Settings/Devices/DPlusSim/ForceOn|b|0
-/Settings/Devices/DPlusSim/ForceOff|b|0
-/Settings/Devices/DPlusSim/StatusPublishInterval|f|2.0
-/Settings/Devices/DPlusSim/DbusBus|s|system
-/Settings/Devices/DPlusSim/ServicePath|s|com.victronenergy.battery
-/Settings/Devices/DPlusSim/VoltagePath|s|/Dc/0/Voltage
+/Settings/Devices/DPlusSim/GpioPin i 17
+/Settings/Devices/DPlusSim/TargetVoltage f 3.3
+/Settings/Devices/DPlusSim/Hysteresis f 0.1
+/Settings/Devices/DPlusSim/ActivationDelaySeconds f 2.0
+/Settings/Devices/DPlusSim/DeactivationDelaySeconds f 5.0
+/Settings/Devices/DPlusSim/OnVoltage f 3.35
+/Settings/Devices/DPlusSim/OffVoltage f 3.25
+/Settings/Devices/DPlusSim/OnDelaySec f 2.0
+/Settings/Devices/DPlusSim/OffDelaySec f 5.0
+/Settings/Devices/DPlusSim/UseIgnition b 0
+/Settings/Devices/DPlusSim/IgnitionGpio i 4
+/Settings/Devices/DPlusSim/IgnitionPull s down
+/Settings/Devices/DPlusSim/ForceOn b 0
+/Settings/Devices/DPlusSim/ForceOff b 0
+/Settings/Devices/DPlusSim/StatusPublishInterval f 2.0
+/Settings/Devices/DPlusSim/DbusBus s system
+/Settings/Devices/DPlusSim/ServicePath s com.victronenergy.battery
+/Settings/Devices/DPlusSim/VoltagePath s /Dc/0/Voltage
 EOF
 }
 
