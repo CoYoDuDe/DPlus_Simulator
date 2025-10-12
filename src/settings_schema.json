@@ -57,9 +57,18 @@
       "minimum": 0,
       "description": "GPIO-Pin für das Zündplus-Signal."
     },
+    "ignition_pull": {
+      "type": "string",
+      "enum": ["up", "down", "none"],
+      "description": "Pull-Up/-Down-Konfiguration für den Zündplus-Eingang."
+    },
     "force_on": {
       "type": "boolean",
       "description": "Erzwingt ein dauerhaft eingeschaltetes Ausgangssignal."
+    },
+    "force_off": {
+      "type": "boolean",
+      "description": "Erzwingt ein dauerhaft ausgeschaltetes Ausgangssignal."
     },
     "dbus_bus": {
       "type": "string",
@@ -92,7 +101,9 @@
     "off_delay_seconds",
     "use_ignition",
     "ignition_gpio",
+    "ignition_pull",
     "force_on",
+    "force_off",
     "dbus_bus",
     "status_publish_interval",
     "service_path",

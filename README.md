@@ -9,7 +9,8 @@ Der DPlus Simulator stellt eine Software-Komponente bereit, mit der die D+-Signa
 - Verwaltung der Einstellungen über das Victron `com.victronenergy.settings`-Objekt.
 - Direkte Registrierung der Einstellungswerte über das Victron `SettingsDevice`, inklusive Live-Synchronisation mit dem Dienst.
 - Integration in das Venus OS durch Bereitstellung eines Services, der im Victron DBus sichtbar ist.
-- Optionaler Zündplus-Eingang als weitere Einschaltbedingung sowie ein erzwungener Dauerbetrieb.
+- Optionaler Zündplus-Eingang mit konfigurierbarem Pull-Up/-Down als zusätzliche Einschaltbedingung.
+- Erzwungener Dauerbetrieb über Force-On oder Force-Off.
 - Logging der Installations- und Laufzeitereignisse über den PackageManager sowie lokale Logdateien.
 
 ## Installation
@@ -30,7 +31,8 @@ Die wichtigsten Schlüssel im Gerätekontext `Settings/Devices/DPlusSim` sind:
 | `OnVoltage` / `OffVoltage` | Getrennte Spannungen zum Ein- bzw. Ausschalten. |
 | `OnDelaySec` / `OffDelaySec` | Verzögerungen für das Ein- und Ausschalten. |
 | `UseIgnition` / `IgnitionGpio` | Aktiviert den Zündplus-Eingang und legt den Eingangspin fest. |
-| `ForceOn` | Erzwingt ein dauerhaft aktives Ausgangssignal. |
+| `IgnitionPull` | Legt den Pull-Up/-Down-Modus für den Zündplus-Eingang fest (`up`, `down`, `none`). |
+| `ForceOn` / `ForceOff` | Erzwingt dauerhaft ein aktiviertes bzw. deaktiviertes Ausgangssignal. |
 | `StatusPublishInterval` | Aktualisierungsintervall der Statusmeldungen. |
 | `ServicePath` | D-Bus-Service, aus dem die Batteriespannung gelesen wird. |
 | `VoltagePath` | Objektpfad des Spannungswertes innerhalb des Dienstes. |
@@ -40,9 +42,11 @@ Alle Werte lassen sich über den DBus-Explorer oder per `dbus-spy` anpassen. Än
 ### Statusinformationen
 Der bereitgestellte DBus-Service `com.coyodude.dplussim` publiziert neben dem bisherigen Status zusätzliche Informationen:
 - `effective_on_voltage` / `effective_off_voltage`: aktuell verwendete Schwellenwerte unter Berücksichtigung der Hysterese.
-- `ignition_state` und `ignition_enabled`: Zustand und Nutzung des Zündplus-Eingangs.
-- `allow_on`: Gibt an, ob die Einschaltbedingungen aktuell erfüllt sind.
-- `force_on` / `force_on_active`: Konfiguration und tatsächlicher Einsatz des erzwungenen Betriebs.
+- `ignition`: Enthält Zustand, Aktivierung, Pin und Pull-Mode des Zündplus-Eingangs.
+- `allow_on` / `off_required`: Geben Auskunft über erfüllte Ein- und Ausschaltbedingungen.
+- `conditions`: Aufgeschlüsselte Einzelergebnisse der Ein- bzw. Ausschaltlogik inklusive Hysterese.
+- `force_mode`: Stellt konfigurierte und aktive Force-On/Force-Off-Zustände dar.
+- `delays`: Liefert Pending-Status, verbleibende Verzögerungen sowie das nächste Umschaltereignis.
 
 Damit lassen sich die Entscheidungen des Reglers transparent nachverfolgen.
 

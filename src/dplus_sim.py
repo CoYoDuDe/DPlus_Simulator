@@ -98,6 +98,7 @@ DEFAULT_OFF_VOLTAGE = DEFAULT_TARGET_VOLTAGE - DEFAULT_HYSTERESIS / 2.0
 DEFAULT_ON_DELAY_SECONDS = DEFAULT_ACTIVATION_DELAY_SECONDS
 DEFAULT_OFF_DELAY_SECONDS = DEFAULT_DEACTIVATION_DELAY_SECONDS
 DEFAULT_IGNITION_GPIO = 4
+DEFAULT_IGNITION_PULL = "down"
 
 
 SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
@@ -189,11 +190,27 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "min": 0,
         "max": 0,
     },
+    "ignition_pull": {
+        "path": "/Settings/Devices/DPlusSim/IgnitionPull",
+        "type": "s",
+        "default": DEFAULT_IGNITION_PULL,
+        "description": "Pull-Up/-Down-Konfiguration für den Zündplus-Eingang (up/down/none).",
+        "min": 0,
+        "max": 0,
+    },
     "force_on": {
         "path": "/Settings/Devices/DPlusSim/ForceOn",
         "type": "b",
         "default": False,
         "description": "Erzwingt dauerhaft ein aktives D+-Signal, unabhängig von den Eingangswerten.",
+        "min": 0,
+        "max": 1,
+    },
+    "force_off": {
+        "path": "/Settings/Devices/DPlusSim/ForceOff",
+        "type": "b",
+        "default": False,
+        "description": "Erzwingt ein dauerhaft deaktiviertes D+-Signal, unabhängig von den Eingangswerten.",
         "min": 0,
         "max": 1,
     },
@@ -993,11 +1010,17 @@ class GPIOController:
 
 
 class GPIOInput:
-    def __init__(self, pin: int, *, enabled: bool = True, pull_up: bool = False) -> None:
+    def __init__(
+        self,
+        pin: int,
+        *,
+        enabled: bool = True,
+        pull_mode: str = DEFAULT_IGNITION_PULL,
+    ) -> None:
         self._logger = logging.getLogger(self.__class__.__name__)
         self._pin = int(pin)
         self._enabled = enabled and _RPiGPIO is not None
-        self._pull_up = pull_up
+        self._pull_mode = self._normalize_pull_mode(pull_mode)
         self._state = False
         if self._enabled:
             self._configure_hardware()
@@ -1005,12 +1028,19 @@ class GPIOInput:
     def _configure_hardware(self) -> None:
         if not self._enabled:
             return
-        pud = _RPiGPIO.PUD_UP if self._pull_up else _RPiGPIO.PUD_DOWN
-        _RPiGPIO.setup(self._pin, _RPiGPIO.IN, pull_up_down=pud)
+        pud = self._resolve_pull_constant()
+        if pud is None:
+            _RPiGPIO.setup(self._pin, _RPiGPIO.IN)
+        else:
+            _RPiGPIO.setup(self._pin, _RPiGPIO.IN, pull_up_down=pud)
 
     @property
     def pin(self) -> int:
         return self._pin
+
+    @property
+    def pull_mode(self) -> str:
+        return self._pull_mode
 
     def reconfigure(self, new_pin: int) -> None:
         new_pin = int(new_pin)
@@ -1023,6 +1053,18 @@ class GPIOInput:
             self._configure_hardware()
         else:
             self._pin = new_pin
+
+    def set_pull_mode(self, pull_mode: str) -> None:
+        normalized = self._normalize_pull_mode(pull_mode)
+        if normalized == self._pull_mode:
+            return
+        self._logger.info(
+            "GPIO-Eingang %s verwendet nun Pull-%s", self._pin, normalized
+        )
+        self._pull_mode = normalized
+        if self._enabled:
+            _RPiGPIO.cleanup(self._pin)
+            self._configure_hardware()
 
     def read(self) -> bool:
         if self._enabled:
@@ -1042,6 +1084,29 @@ class GPIOInput:
         if self._enabled:
             self._logger.debug("GPIO-Eingang %s wird freigegeben", self._pin)
             _RPiGPIO.cleanup(self._pin)
+
+    def _normalize_pull_mode(self, mode: str) -> str:
+        normalized = str(mode or "").strip().lower()
+        if normalized in {"up", "pullup", "pud_up"}:
+            return "up"
+        if normalized in {"none", "off", "floating"}:
+            return "none"
+        return "down"
+
+    def _resolve_pull_constant(self) -> Optional[int]:
+        if _RPiGPIO is None:
+            return None
+        if self._pull_mode == "up":
+            return getattr(_RPiGPIO, "PUD_UP", None)
+        if self._pull_mode == "none":
+            pud_off = getattr(_RPiGPIO, "PUD_OFF", None)
+            if pud_off is None:
+                self._logger.warning(
+                    "GPIO-Bibliothek unterstützt keinen PUD_OFF, Pull-Mode 'none' fällt auf 'down' zurück"
+                )
+                return getattr(_RPiGPIO, "PUD_DOWN", None)
+            return pud_off
+        return getattr(_RPiGPIO, "PUD_DOWN", None)
 
 
 @dataclass
@@ -1087,32 +1152,44 @@ class SwitchLogic:
     def thresholds(self) -> Tuple[float, float]:
         return self._compute_thresholds()
 
-    def evaluate(self, voltage: float, now: float, allow_on: bool, force_on: bool) -> Dict[str, Any]:
+    def evaluate(
+        self,
+        voltage: float,
+        now: float,
+        *,
+        on_dependencies: Dict[str, bool],
+        off_dependencies: Dict[str, bool],
+        force_on: bool,
+        force_off: bool,
+    ) -> Dict[str, Any]:
         upper, lower = self._compute_thresholds()
-        changed = False
+        voltage_on = voltage >= upper
+        voltage_off = voltage <= lower
+        conditions_on: Dict[str, bool] = {"voltage": voltage_on}
+        conditions_off: Dict[str, bool] = {"voltage": voltage_off}
+        conditions_on.update(on_dependencies)
+        conditions_off.update(off_dependencies)
+        on_ready = all(conditions_on.values()) if conditions_on else True
+        off_required = any(conditions_off.values()) if conditions_off else False
 
-        if force_on:
+        changed = False
+        force_off_active = bool(force_off)
+        force_on_active = bool(force_on and not force_off_active)
+
+        if force_off_active:
+            if self.state:
+                changed = True
+            self.state = False
+            self.pending_state = None
+            self.deadline = None
+        elif force_on_active:
             if not self.state:
                 changed = True
             self.state = True
             self.pending_state = None
             self.deadline = None
-        elif not allow_on:
-            if self.state:
-                if self.pending_state is not False:
-                    self.pending_state = False
-                    self.deadline = now + self.off_delay
-                elif self.deadline is not None and now >= self.deadline:
-                    self.state = False
-                    self.pending_state = None
-                    self.deadline = None
-                    changed = True
-            else:
-                if self.pending_state is not None:
-                    self.pending_state = None
-                    self.deadline = None
         elif self.state:
-            if voltage <= lower:
+            if off_required:
                 if self.pending_state is not False:
                     self.pending_state = False
                     self.deadline = now + self.off_delay
@@ -1125,7 +1202,7 @@ class SwitchLogic:
                 self.pending_state = None
                 self.deadline = None
         else:
-            if voltage >= upper:
+            if on_ready:
                 if self.pending_state is not True:
                     self.pending_state = True
                     self.deadline = now + self.on_delay
@@ -1138,6 +1215,16 @@ class SwitchLogic:
                 self.pending_state = None
                 self.deadline = None
 
+        pending_direction = "none"
+        on_delay_remaining = 0.0
+        off_delay_remaining = 0.0
+        if self.pending_state is True and self.deadline is not None:
+            pending_direction = "on"
+            on_delay_remaining = max(0.0, self.deadline - now)
+        elif self.pending_state is False and self.deadline is not None:
+            pending_direction = "off"
+            off_delay_remaining = max(0.0, self.deadline - now)
+
         return {
             "state": self.state,
             "pending_state": self.pending_state,
@@ -1145,8 +1232,15 @@ class SwitchLogic:
             "changed": changed,
             "upper_threshold": upper,
             "lower_threshold": lower,
-            "force_on_active": force_on,
-            "allow_on": allow_on,
+            "conditions_on": conditions_on,
+            "conditions_off": conditions_off,
+            "on_ready": on_ready,
+            "off_required": off_required,
+            "force_on_active": force_on_active,
+            "force_off_active": force_off_active,
+            "pending_direction": pending_direction,
+            "on_delay_remaining": on_delay_remaining,
+            "off_delay_remaining": off_delay_remaining,
         }
 
 
@@ -1170,9 +1264,18 @@ class SimulatorStatus:
     ignition_enabled: bool = False
     ignition_state: bool = False
     ignition_gpio: int = 0
+    ignition_pull_mode: str = DEFAULT_IGNITION_PULL
     allow_on: bool = True
+    off_required: bool = False
     force_on_configured: bool = False
     force_on_active: bool = False
+    force_off_configured: bool = False
+    force_off_active: bool = False
+    conditions_on: Dict[str, bool] = field(default_factory=dict)
+    conditions_off: Dict[str, bool] = field(default_factory=dict)
+    pending_direction: str = "none"
+    on_delay_remaining: float = 0.0
+    off_delay_remaining: float = 0.0
     timestamp: float = field(default_factory=lambda: time.time())
     voltage_source: str = "manual"
     voltage_source_state: str = "manual"
@@ -1206,9 +1309,18 @@ class SimulatorStatus:
             "ignition_enabled": self.ignition_enabled,
             "ignition_state": self.ignition_state,
             "ignition_gpio": self.ignition_gpio,
+            "ignition_pull_mode": self.ignition_pull_mode,
             "allow_on": self.allow_on,
+            "off_required": self.off_required,
             "force_on": self.force_on_configured,
             "force_on_active": self.force_on_active,
+            "force_off": self.force_off_configured,
+            "force_off_active": self.force_off_active,
+            "conditions_on": dict(self.conditions_on),
+            "conditions_off": dict(self.conditions_off),
+            "pending_direction": self.pending_direction,
+            "on_delay_remaining": self.on_delay_remaining,
+            "off_delay_remaining": self.off_delay_remaining,
             "timestamp": self.timestamp,
             "voltage_source": self.voltage_source,
             "voltage_source_state": self.voltage_source_state,
@@ -1221,6 +1333,25 @@ class SimulatorStatus:
             "voltage_source_failures": self.voltage_source_failures,
             "voltage_source_last_error": self.voltage_source_last_error,
             "voltage_source_last_update": self.voltage_source_last_update,
+            "ignition": {
+                "enabled": self.ignition_enabled,
+                "state": self.ignition_state,
+                "gpio": self.ignition_gpio,
+                "pull_mode": self.ignition_pull_mode,
+            },
+            "force_mode": {
+                "configured_on": self.force_on_configured,
+                "configured_off": self.force_off_configured,
+                "active_on": self.force_on_active,
+                "active_off": self.force_off_active,
+            },
+            "delays": {
+                "pending_state": self.pending_state if self.pending_state is not None else "none",
+                "deadline": self.deadline or 0.0,
+                "pending_direction": self.pending_direction,
+                "on_remaining": self.on_delay_remaining,
+                "off_remaining": self.off_delay_remaining,
+            },
         }
 
 
@@ -1230,7 +1361,11 @@ class DPlusController:
         self._settings = DEFAULT_SETTINGS.copy()
         self._settings.update(settings)
         self._gpio = GPIOController(self._settings["gpio_pin"], enabled=use_gpio)
-        self._ignition_input = GPIOInput(self._settings["ignition_gpio"], enabled=use_gpio)
+        self._ignition_input = GPIOInput(
+            self._settings["ignition_gpio"],
+            enabled=use_gpio,
+            pull_mode=self._settings.get("ignition_pull", DEFAULT_IGNITION_PULL),
+        )
         self._switch = SwitchLogic(
             on_threshold=self._resolve_on_voltage(),
             off_threshold=self._resolve_off_voltage(),
@@ -1253,7 +1388,9 @@ class DPlusController:
             off_delay_seconds=self._resolve_off_delay(),
             ignition_enabled=bool(self._settings["use_ignition"]),
             ignition_gpio=int(self._settings["ignition_gpio"]),
+            ignition_pull_mode=str(self._settings.get("ignition_pull", DEFAULT_IGNITION_PULL)),
             force_on_configured=bool(self._settings["force_on"]),
+            force_off_configured=bool(self._settings.get("force_off", False)),
         )
         self._status.effective_on_voltage = upper_threshold
         self._status.effective_off_voltage = lower_threshold
@@ -1396,6 +1533,8 @@ class DPlusController:
                 self._gpio.reconfigure(int(self._settings["gpio_pin"]))
             if "ignition_gpio" in new_settings:
                 self._ignition_input.reconfigure(int(self._settings["ignition_gpio"]))
+            if "ignition_pull" in new_settings:
+                self._ignition_input.set_pull_mode(self._settings["ignition_pull"])
             self._status.target_voltage = float(self._settings["target_voltage"])
             self._status.hysteresis = float(self._settings["hysteresis"])
             self._status.activation_delay_seconds = float(
@@ -1410,7 +1549,11 @@ class DPlusController:
             self._status.off_delay_seconds = self._resolve_off_delay()
             self._status.ignition_enabled = bool(self._settings["use_ignition"])
             self._status.ignition_gpio = int(self._settings["ignition_gpio"])
+            self._status.ignition_pull_mode = str(
+                self._settings.get("ignition_pull", DEFAULT_IGNITION_PULL)
+            )
             self._status.force_on_configured = bool(self._settings["force_on"])
+            self._status.force_off_configured = bool(self._settings.get("force_off", False))
             self._evaluate_locked()
             await self._notify_status_locked()
             return self.get_status()
@@ -1534,12 +1677,26 @@ class DPlusController:
         now = time.monotonic()
         ignition_state = self._ignition_input.read() if self._ignition_input else False
         ignition_required = bool(self._settings.get("use_ignition", False))
-        allow_on = (not ignition_required) or ignition_state
         source_available = self._voltage_source_available or self._voltage_provider is None
-        allow_on = allow_on and source_available
         self._status.voltage_source_available = source_available
+        on_dependencies: Dict[str, bool] = {}
+        off_dependencies: Dict[str, bool] = {}
+        if ignition_required:
+            on_dependencies["ignition"] = ignition_state
+            off_dependencies["ignition"] = not ignition_state
+        on_dependencies["voltage_source"] = source_available
+        if not source_available:
+            off_dependencies["voltage_source"] = True
         force_on = bool(self._settings.get("force_on", False))
-        switch_state = self._switch.evaluate(self._voltage, now, allow_on, force_on)
+        force_off = bool(self._settings.get("force_off", False))
+        switch_state = self._switch.evaluate(
+            self._voltage,
+            now,
+            on_dependencies=on_dependencies,
+            off_dependencies=off_dependencies,
+            force_on=force_on,
+            force_off=force_off,
+        )
         if switch_state["changed"]:
             self._logger.info(
                 "GPIO-Status wechselt zu %s (Spannung %.3f V)",
@@ -1555,9 +1712,18 @@ class DPlusController:
         self._status.effective_off_voltage = switch_state["lower_threshold"]
         self._status.ignition_enabled = ignition_required
         self._status.ignition_state = ignition_state
-        self._status.allow_on = switch_state["allow_on"]
+        self._status.ignition_pull_mode = str(self._settings.get("ignition_pull", DEFAULT_IGNITION_PULL))
+        self._status.allow_on = switch_state["on_ready"]
+        self._status.off_required = switch_state["off_required"]
+        self._status.conditions_on = dict(switch_state["conditions_on"])
+        self._status.conditions_off = dict(switch_state["conditions_off"])
+        self._status.pending_direction = switch_state["pending_direction"]
+        self._status.on_delay_remaining = switch_state["on_delay_remaining"]
+        self._status.off_delay_remaining = switch_state["off_delay_remaining"]
         self._status.force_on_active = switch_state["force_on_active"]
+        self._status.force_off_active = switch_state["force_off_active"]
         self._status.force_on_configured = force_on
+        self._status.force_off_configured = force_off
         self._status.timestamp = time.time()
 
     async def _notify_status_locked(self) -> None:
