@@ -84,49 +84,63 @@ register_package_dependencies() {
 }
 
 register_settings_definitions() {
+  local -a settings_definitions=(
+    "/Settings/Devices/DPlusSim/GpioPin|i|17|GPIO-Pin, der die simulierte D+-Leitung schaltet."
+    "/Settings/Devices/DPlusSim/TargetVoltage|f|3.3|Zielspannung in Volt, die durch die Simulation angestrebt wird."
+    "/Settings/Devices/DPlusSim/Hysteresis|f|0.1|Hystereseband in Volt, bevor der GPIO neu geschaltet wird."
+    "/Settings/Devices/DPlusSim/ActivationDelaySeconds|f|2.0|Verzögerung in Sekunden, bevor der GPIO bei steigender Spannung eingeschaltet wird."
+    "/Settings/Devices/DPlusSim/DeactivationDelaySeconds|f|5.0|Verzögerung in Sekunden, bevor der GPIO bei fallender Spannung ausgeschaltet wird."
+    "/Settings/Devices/DPlusSim/OnVoltage|f|3.35|Spannung, ab der die D+-Simulation aktiviert werden soll."
+    "/Settings/Devices/DPlusSim/OffVoltage|f|3.25|Spannung, unter der die D+-Simulation deaktiviert wird."
+    "/Settings/Devices/DPlusSim/OnDelaySec|f|2.0|Verzögerung in Sekunden bis zum Einschalten, sobald alle Bedingungen erfüllt sind."
+    "/Settings/Devices/DPlusSim/OffDelaySec|f|5.0|Verzögerung in Sekunden bis zum Ausschalten, wenn die Bedingungen entfallen."
+    "/Settings/Devices/DPlusSim/UseIgnition|b|0|Aktiviert die Abhängigkeit vom Zündplus-Eingang."
+    "/Settings/Devices/DPlusSim/IgnitionGpio|i|4|GPIO-Pin, an dem das Zündplus-Signal eingelesen wird."
+    "/Settings/Devices/DPlusSim/IgnitionPull|s|down|Pull-Up/-Down-Konfiguration für den Zündplus-Eingang (up/down/none)."
+    "/Settings/Devices/DPlusSim/ForceOn|b|0|Erzwingt dauerhaft ein aktives D+-Signal."
+    "/Settings/Devices/DPlusSim/ForceOff|b|0|Erzwingt dauerhaft ein deaktiviertes D+-Signal."
+    "/Settings/Devices/DPlusSim/StatusPublishInterval|f|2.0|Intervall in Sekunden zur Veröffentlichung des Status über D-Bus-Signale."
+    "/Settings/Devices/DPlusSim/DbusBus|s|system|Zu verwendender D-Bus (system oder session)."
+    "/Settings/Devices/DPlusSim/ServicePath|s|com.victronenergy.battery|D-Bus-Service, aus dem die Spannung gelesen wird."
+    "/Settings/Devices/DPlusSim/VoltagePath|s|/Dc/0/Voltage|Objektpfad des Spannungswertes."
+  )
+
+  local metadata_payload=""
+  local fallback_payload=""
+
+  while IFS='|' read -r path type default desc; do
+    local fallback_default="${default}"
+    local metadata_default="${default}"
+
+    if [[ "${type}" == "b" ]]; then
+      case "${default}" in
+        1|true|TRUE)
+          fallback_default="1"
+          metadata_default="true"
+          ;;
+        0|false|FALSE|'')
+          fallback_default="0"
+          metadata_default="false"
+          ;;
+        *)
+          die "Ungültiger Standardwert ${default} für boolesche Einstellung ${path}"
+          ;;
+      esac
+    fi
+
+    metadata_payload+="${path}|${type}|${metadata_default}|${desc}"$'\n'
+    fallback_payload+="${path} ${type} ${fallback_default}"$'\n'
+  done < <(printf '%s\n' "${settings_definitions[@]}")
+
   if declare -F helper_register_settings_with_metadata >/dev/null; then
-    helper_register_settings_with_metadata <<'EOF'
-/Settings/Devices/DPlusSim/GpioPin|i|17|GPIO-Pin, der die simulierte D+-Leitung schaltet.
-/Settings/Devices/DPlusSim/TargetVoltage|f|3.3|Zielspannung in Volt, die durch die Simulation angestrebt wird.
-/Settings/Devices/DPlusSim/Hysteresis|f|0.1|Hystereseband in Volt, bevor der GPIO neu geschaltet wird.
-/Settings/Devices/DPlusSim/ActivationDelaySeconds|f|2.0|Verzögerung in Sekunden, bevor der GPIO bei steigender Spannung eingeschaltet wird.
-/Settings/Devices/DPlusSim/DeactivationDelaySeconds|f|5.0|Verzögerung in Sekunden, bevor der GPIO bei fallender Spannung ausgeschaltet wird.
-/Settings/Devices/DPlusSim/OnVoltage|f|3.35|Spannung, ab der die D+-Simulation aktiviert werden soll.
-/Settings/Devices/DPlusSim/OffVoltage|f|3.25|Spannung, unter der die D+-Simulation deaktiviert wird.
-/Settings/Devices/DPlusSim/OnDelaySec|f|2.0|Verzögerung in Sekunden bis zum Einschalten, sobald alle Bedingungen erfüllt sind.
-/Settings/Devices/DPlusSim/OffDelaySec|f|5.0|Verzögerung in Sekunden bis zum Ausschalten, wenn die Bedingungen entfallen.
-/Settings/Devices/DPlusSim/UseIgnition|b|false|Aktiviert die Abhängigkeit vom Zündplus-Eingang.
-/Settings/Devices/DPlusSim/IgnitionGpio|i|4|GPIO-Pin, an dem das Zündplus-Signal eingelesen wird.
-/Settings/Devices/DPlusSim/IgnitionPull|s|down|Pull-Up/-Down-Konfiguration für den Zündplus-Eingang (up/down/none).
-/Settings/Devices/DPlusSim/ForceOn|b|false|Erzwingt dauerhaft ein aktives D+-Signal.
-/Settings/Devices/DPlusSim/ForceOff|b|false|Erzwingt dauerhaft ein deaktiviertes D+-Signal.
-/Settings/Devices/DPlusSim/StatusPublishInterval|f|2.0|Intervall in Sekunden zur Veröffentlichung des Status über D-Bus-Signale.
-/Settings/Devices/DPlusSim/DbusBus|s|system|Zu verwendender D-Bus (system oder session).
-/Settings/Devices/DPlusSim/ServicePath|s|com.victronenergy.battery|D-Bus-Service, aus dem die Spannung gelesen wird.
-/Settings/Devices/DPlusSim/VoltagePath|s|/Dc/0/Voltage|Objektpfad des Spannungswertes.
+    helper_register_settings_with_metadata <<EOF
+${metadata_payload%$'\n'}
 EOF
     return
   fi
 
-  helper_register_settings <<'EOF'
-/Settings/Devices/DPlusSim/GpioPin i 17
-/Settings/Devices/DPlusSim/TargetVoltage f 3.3
-/Settings/Devices/DPlusSim/Hysteresis f 0.1
-/Settings/Devices/DPlusSim/ActivationDelaySeconds f 2.0
-/Settings/Devices/DPlusSim/DeactivationDelaySeconds f 5.0
-/Settings/Devices/DPlusSim/OnVoltage f 3.35
-/Settings/Devices/DPlusSim/OffVoltage f 3.25
-/Settings/Devices/DPlusSim/OnDelaySec f 2.0
-/Settings/Devices/DPlusSim/OffDelaySec f 5.0
-/Settings/Devices/DPlusSim/UseIgnition b 0
-/Settings/Devices/DPlusSim/IgnitionGpio i 4
-/Settings/Devices/DPlusSim/IgnitionPull s down
-/Settings/Devices/DPlusSim/ForceOn b 0
-/Settings/Devices/DPlusSim/ForceOff b 0
-/Settings/Devices/DPlusSim/StatusPublishInterval f 2.0
-/Settings/Devices/DPlusSim/DbusBus s system
-/Settings/Devices/DPlusSim/ServicePath s com.victronenergy.battery
-/Settings/Devices/DPlusSim/VoltagePath s /Dc/0/Voltage
+  helper_register_settings <<EOF
+${fallback_payload%$'\n'}
 EOF
 }
 
