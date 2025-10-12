@@ -1,5 +1,3 @@
-{
-  "owner": "coyodude",
-  "repository": "DPlus_Simulator",
-  "branch": "main"
-}
+owner=CoYoDuDe
+repo=DPlus_Simulator
+branch=main

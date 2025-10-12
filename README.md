@@ -20,6 +20,8 @@ Die Installation erfolgt über den SetupHelper in Kombination mit dem Victron Pa
 3. Installieren Sie das Paket `dplus-simulator` und bestätigen Sie den Installationsdialog.
 4. Überprüfen Sie das PackageManager-Log, um den erfolgreichen Abschluss der Installation zu verifizieren.
 
+> **Hinweis:** Die Datei `gitHubInfo` liefert dem PackageManager die notwendigen Metadaten, um automatische Updates gegen das GitHub-Repository `CoYoDuDe/DPlus_Simulator` einzurichten.
+
 ### SetupHelper-Archiv erstellen
 Um ein aktuelles Release-Archiv zu erzeugen, steht das Skript `tools/create_release_archive.sh` zur Verfügung. Es setzt die
 Ausführungsrechte für `setup` sowie alle `services/*/run`-Skripte und erstellt anschließend das tar.gz-Archiv mit den von
