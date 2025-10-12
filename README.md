@@ -20,6 +20,18 @@ Die Installation erfolgt über den SetupHelper in Kombination mit dem Victron Pa
 3. Installieren Sie das Paket `dplus-simulator` und bestätigen Sie den Installationsdialog.
 4. Überprüfen Sie das PackageManager-Log, um den erfolgreichen Abschluss der Installation zu verifizieren.
 
+### SetupHelper-Archiv erstellen
+Um ein aktuelles Release-Archiv zu erzeugen, steht das Skript `tools/create_release_archive.sh` zur Verfügung. Es setzt die
+Ausführungsrechte für `setup` sowie alle `services/*/run`-Skripte und erstellt anschließend das tar.gz-Archiv mit den von
+SetupHelper erwarteten Eigentümern und Rechten.
+
+```bash
+./tools/create_release_archive.sh build/DPlus_Simulator-latest.tgz
+```
+
+Ohne Argument legt das Skript ein datumsbasiertes Archiv im Projektwurzelverzeichnis an. Bereits vorhandene Archive mit der
+Endung `.tgz` werden bei der Paketierung automatisch ausgeschlossen, sodass immer der aktuelle Repostand im Archiv landet.
+
 ### Konfigurationspfade
 Die Konfiguration erfolgt über den Victron DBus (Service `com.victronenergy.settings`).
 Die wichtigsten Schlüssel im Gerätekontext `Settings/Devices/DPlusSim` sind:
