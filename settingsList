@@ -9,7 +9,9 @@
 /Settings/Devices/DPlusSim/OffDelaySec
 /Settings/Devices/DPlusSim/UseIgnition
 /Settings/Devices/DPlusSim/IgnitionGpio
+/Settings/Devices/DPlusSim/IgnitionPull
 /Settings/Devices/DPlusSim/ForceOn
+/Settings/Devices/DPlusSim/ForceOff
 /Settings/Devices/DPlusSim/StatusPublishInterval
 /Settings/Devices/DPlusSim/DbusBus
 /Settings/Devices/DPlusSim/ServicePath
