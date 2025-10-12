@@ -1,5 +1,5 @@
-setuphelper=>=8.10
-platform=raspberrypi
+requires=SetupHelper>=8.10
+raspberryPiOnly=1
 system=python3
 system=python3-venv
 python=dbus-next>=0.2.3
