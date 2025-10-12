@@ -29,6 +29,21 @@ fi
 
 cd "$ROOT_DIR"
 
+if [[ -z "${GIT_DIR:-}" ]]; then
+  if ! git rev-parse --git-dir >/dev/null 2>&1; then
+    echo "Dieses Skript muss innerhalb eines Git-Repositorys ausgeführt werden." >&2
+    exit 1
+  fi
+fi
+
+STATUS="$(git status --porcelain --untracked-files=normal)"
+if [[ -n "$STATUS" ]]; then
+  echo "Arbeitsverzeichnis enthält unversionierte oder nicht eingecheckte Änderungen:" >&2
+  echo "$STATUS" >&2
+  echo "Bitte committen, stashen oder bereinigen Sie die Änderungen, bevor Sie das Release-Archiv erstellen." >&2
+  exit 1
+fi
+
 tar --owner=0 --group=0 --numeric-owner \
     --exclude='.git' \
     --exclude='*.tgz' \
