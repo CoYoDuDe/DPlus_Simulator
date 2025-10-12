@@ -60,15 +60,18 @@
     "ignition_pull": {
       "type": "string",
       "enum": ["up", "down", "none"],
-      "description": "Pull-Up/-Down-Konfiguration für den Zündplus-Eingang."
+      "description": "Pull-Up/-Down-Konfiguration für den Zündplus-Eingang.",
+      "default": "down"
     },
     "force_on": {
       "type": "boolean",
-      "description": "Erzwingt ein dauerhaft eingeschaltetes Ausgangssignal."
+      "description": "Erzwingt ein dauerhaft eingeschaltetes Ausgangssignal.",
+      "default": false
     },
     "force_off": {
       "type": "boolean",
-      "description": "Erzwingt ein dauerhaft ausgeschaltetes Ausgangssignal."
+      "description": "Erzwingt ein dauerhaft ausgeschaltetes Ausgangssignal.",
+      "default": false
     },
     "dbus_bus": {
       "type": "string",

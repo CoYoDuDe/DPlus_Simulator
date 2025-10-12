@@ -20,7 +20,9 @@ readarray -t SETTINGS_DEFINITIONS <<'SETTINGS'
 /Settings/Devices/DPlusSim/OffDelaySec|d|5.0|Verzögerung in Sekunden bis zum Ausschalten, wenn die Bedingungen entfallen.
 /Settings/Devices/DPlusSim/UseIgnition|b|false|Aktiviert die Abhängigkeit vom Zündplus-Eingang.
 /Settings/Devices/DPlusSim/IgnitionGpio|i|4|GPIO-Pin, an dem das Zündplus-Signal eingelesen wird.
+/Settings/Devices/DPlusSim/IgnitionPull|s|down|Pull-Up/-Down-Konfiguration für den Zündplus-Eingang (up/down/none).
 /Settings/Devices/DPlusSim/ForceOn|b|false|Erzwingt dauerhaft ein aktives D+-Signal.
+/Settings/Devices/DPlusSim/ForceOff|b|false|Erzwingt dauerhaft ein deaktiviertes D+-Signal.
 /Settings/Devices/DPlusSim/StatusPublishInterval|d|2.0|Intervall in Sekunden zur Veröffentlichung des Status über D-Bus-Signale.
 /Settings/Devices/DPlusSim/DbusBus|s|system|Zu verwendender D-Bus (system oder session).
 /Settings/Devices/DPlusSim/ServicePath|s|com.victronenergy.battery|D-Bus-Service, aus dem die Spannung gelesen wird.
