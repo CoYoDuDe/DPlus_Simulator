@@ -80,4 +80,4 @@ Damit lassen sich die Entscheidungen des Reglers transparent nachverfolgen.
 - Abhängigkeit vom Victron Venus OS in der aktuellen Version.
 
 ## Lizenz
-Dieses Projekt steht unter der MIT-Lizenz. Details finden Sie in der Datei `LICENSE`.
+Dieses Projekt steht unter der MIT-Lizenz. Details finden Sie in der Datei [LICENSE](LICENSE).
