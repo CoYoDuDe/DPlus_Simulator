@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, Optional, Set, Tuple
 
 try:  # pragma: no-cover - optionale Abhängigkeiten
     from dbus_next import BusType, Message, Variant
@@ -539,6 +539,8 @@ class SettingsBridge:
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._match_rule: Optional[str] = None
         self._handler_registered = False
+        self._accepted_senders: Set[str] = {self._service_name}
+        self._refreshed_unknown_senders: Set[str] = set()
 
     def set_callback(
         self, callback: Optional[Callable[[str, Any], Awaitable[None] | None]]
@@ -550,6 +552,7 @@ class SettingsBridge:
             raise RuntimeError("D-Bus-Unterstützung ist nicht verfügbar")
         self._loop = asyncio.get_running_loop()
         await self._register_match_rule()
+        await self._update_unique_sender()
         initial_values = await self._ensure_settings()
         self._bus.add_message_handler(self._handle_message)
         self._handler_registered = True
@@ -674,7 +677,15 @@ class SettingsBridge:
             return False
         if getattr(message, "message_type", None) != getattr(MessageType, "SIGNAL", None):
             return False
-        if getattr(message, "sender", None) != self._service_name:
+        sender = getattr(message, "sender", None)
+        if sender not in self._accepted_senders:
+            if (
+                isinstance(sender, str)
+                and sender.startswith(":")
+                and sender not in self._refreshed_unknown_senders
+            ):
+                self._refreshed_unknown_senders.add(sender)
+                self._schedule_unique_sender_update()
             return False
         path = getattr(message, "path", None)
         if path not in self._path_to_key:
@@ -724,6 +735,37 @@ class SettingsBridge:
         if type_code == "b":
             return bool(value)
         return str(value)
+
+    async def _update_unique_sender(self) -> None:
+        if Message is None:
+            return
+        try:
+            reply = await self._bus.call(
+                Message(
+                    destination="org.freedesktop.DBus",
+                    path="/org/freedesktop/DBus",
+                    interface="org.freedesktop.DBus",
+                    member="GetNameOwner",
+                    signature="s",
+                    body=[self._service_name],
+                )
+            )
+        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+            self._logger.debug(
+                "Konnte eindeutige Sender-ID nicht ermitteln: %s", exc
+            )
+            return
+        owner = reply.body[0] if reply.body else None
+        owner = self._unwrap_variant(owner)
+        if isinstance(owner, str) and owner:
+            self._accepted_senders.add(owner)
+            self._refreshed_unknown_senders.discard(owner)
+
+    def _schedule_unique_sender_update(self) -> None:
+        loop = self._loop
+        if loop is None or not loop.is_running():
+            return
+        loop.create_task(self._update_unique_sender())
 
     async def write_setting(self, key: str, value: Any) -> None:
         if Message is None:
