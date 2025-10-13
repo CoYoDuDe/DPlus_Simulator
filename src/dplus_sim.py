@@ -754,6 +754,11 @@ class SettingsBridge:
             self._logger.debug(
                 "Konnte eindeutige Sender-ID nicht ermitteln: %s", exc
             )
+            had_pending = bool(self._refreshed_unknown_senders)
+            self._refreshed_unknown_senders.clear()
+            loop = self._loop
+            if had_pending and loop is not None and loop.is_running():
+                loop.call_later(1.0, self._schedule_unique_sender_update)
             return
         owner = reply.body[0] if reply.body else None
         owner = self._unwrap_variant(owner)
