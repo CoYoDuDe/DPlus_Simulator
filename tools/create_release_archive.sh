@@ -16,7 +16,6 @@ resolve_path() {
 
 ARCHIVE_PATH="$(resolve_path "$TARGET_INPUT")"
 ARCHIVE_DIR="$(dirname "$ARCHIVE_PATH")"
-mkdir -p "$ARCHIVE_DIR"
 
 # Sicherstellen, dass alle relevanten Skripte ausführbar sind
 if [[ -f "$ROOT_DIR/setup" ]]; then
@@ -43,6 +42,8 @@ if [[ -n "$STATUS" ]]; then
   echo "Bitte committen, stashen oder bereinigen Sie die Änderungen, bevor Sie das Release-Archiv erstellen." >&2
   exit 1
 fi
+
+mkdir -p "$ARCHIVE_DIR"
 
 tar --owner=0 --group=0 --numeric-owner \
     --exclude='.git' \
