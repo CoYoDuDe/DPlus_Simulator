@@ -2090,10 +2090,26 @@ async def run_async(args: argparse.Namespace) -> None:
         if settings_bus is not None:
             disconnect = getattr(settings_bus, "disconnect", None)
             if callable(disconnect):
-                with contextlib.suppress(Exception):
-                    disconnect()
-            with contextlib.suppress(Exception):
-                await settings_bus.wait_for_disconnect()
+                disconnected_successfully = False
+                try:
+                    result = disconnect()
+                except Exception:
+                    pass
+                else:
+                    if inspect.isawaitable(result):
+                        try:
+                            await result
+                        except Exception:
+                            pass
+                        else:
+                            disconnected_successfully = True
+                    else:
+                        disconnected_successfully = True
+                if disconnected_successfully:
+                    wait_for_disconnect = getattr(settings_bus, "wait_for_disconnect", None)
+                    if callable(wait_for_disconnect):
+                        with contextlib.suppress(Exception):
+                            await wait_for_disconnect()
 
 
 async def simulate_waveform(controller: DPlusController, amplitude: float) -> None:
