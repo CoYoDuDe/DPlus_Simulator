@@ -1903,10 +1903,30 @@ async def run_async(args: argparse.Namespace) -> None:
                 )
                 if settings_bus is not None:
                     disconnect = getattr(settings_bus, "disconnect", None)
+                    disconnect_result: Any
+                    disconnect_started = False
                     if callable(disconnect):
-                        disconnect()
-                    with contextlib.suppress(Exception):
-                        await settings_bus.wait_for_disconnect()
+                        try:
+                            disconnect_result = disconnect()
+                        except Exception:
+                            pass
+                        else:
+                            if inspect.isawaitable(disconnect_result) or asyncio.isfuture(
+                                disconnect_result
+                            ):
+                                try:
+                                    await disconnect_result
+                                except Exception:
+                                    pass
+                                else:
+                                    disconnect_started = True
+                            else:
+                                disconnect_started = True
+                    if disconnect_started:
+                        wait_for_disconnect = getattr(settings_bus, "wait_for_disconnect", None)
+                        if callable(wait_for_disconnect):
+                            with contextlib.suppress(Exception):
+                                await wait_for_disconnect()
                 settings_backend = None
                 settings_bus = None
                 settings_overrides = {}
