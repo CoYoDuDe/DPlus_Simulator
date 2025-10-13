@@ -429,7 +429,9 @@ class DbusVoltageReader:
         disconnect = getattr(self._bus, "disconnect", None)
         if callable(disconnect):
             with contextlib.suppress(Exception):
-                disconnect()
+                disconnect_result = disconnect()
+                if inspect.isawaitable(disconnect_result):
+                    await disconnect_result
         wait_for_disconnect = getattr(self._bus, "wait_for_disconnect", None)
         if callable(wait_for_disconnect):
             with contextlib.suppress(Exception):
