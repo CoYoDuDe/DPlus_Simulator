@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import inspect
 import logging
 import math
 import os
@@ -2040,28 +2041,57 @@ async def run_async(args: argparse.Namespace) -> None:
     if service is None:
         controller.set_status_callback(lambda _status: None)
 
+    waveform_task: Optional[asyncio.Task[None]] = None
     if args.simulate_waveform:
-        asyncio.create_task(simulate_waveform(controller, args.simulate_waveform))
+        waveform_task = asyncio.create_task(simulate_waveform(controller, args.simulate_waveform))
 
-    await shutdown_event.wait()
-    await controller.set_voltage_provider(
-        None,
-        "manual",
-        source_info={"mode": "manual"},
-    )
-    await controller.shutdown()
-    if voltage_reader is not None:
-        await voltage_reader.close()
-    if bus is not None:
-        await bus.wait_for_disconnect()
-    if settings_backend is not None:
-        await settings_backend.stop()
-    if settings_bus is not None:
-        disconnect = getattr(settings_bus, "disconnect", None)
-        if callable(disconnect):
-            disconnect()
+    try:
+        await shutdown_event.wait()
+    except Exception:
+        logging.getLogger("DPlusSim").exception("Unerwarteter Fehler – Shutdown wird erzwungen")
+        request_shutdown()
+        raise
+    finally:
+        if waveform_task is not None:
+            waveform_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await waveform_task
+
         with contextlib.suppress(Exception):
-            await settings_bus.wait_for_disconnect()
+            await controller.set_voltage_provider(
+                None,
+                "manual",
+                source_info={"mode": "manual"},
+            )
+
+        with contextlib.suppress(Exception):
+            await controller.shutdown()
+
+        if voltage_reader is not None:
+            with contextlib.suppress(Exception):
+                await voltage_reader.close()
+
+        if bus is not None:
+            disconnect = getattr(bus, "disconnect", None)
+            if callable(disconnect):
+                with contextlib.suppress(Exception):
+                    result = disconnect()
+                    if inspect.isawaitable(result):
+                        await result
+            with contextlib.suppress(Exception):
+                await bus.wait_for_disconnect()
+
+        if settings_backend is not None:
+            with contextlib.suppress(Exception):
+                await settings_backend.stop()
+
+        if settings_bus is not None:
+            disconnect = getattr(settings_bus, "disconnect", None)
+            if callable(disconnect):
+                with contextlib.suppress(Exception):
+                    disconnect()
+            with contextlib.suppress(Exception):
+                await settings_bus.wait_for_disconnect()
 
 
 async def simulate_waveform(controller: DPlusController, amplitude: float) -> None:
