@@ -1857,6 +1857,29 @@ def install_signal_handlers(loop: asyncio.AbstractEventLoop, stop_callback: Call
             signal.signal(sig, lambda *_: stop_callback())
 
 
+def resolve_bus_configuration(bus_value: Any) -> Tuple[str, Optional[Any]]:
+    """Normalisiere die Bus-Auswahl und leite einen ``BusType`` ab."""
+
+    fallback_bus = "system"
+    normalized = str(bus_value if bus_value is not None else fallback_bus).strip().lower()
+    if not normalized:
+        normalized = fallback_bus
+    if normalized not in ("system", "session"):
+        logging.getLogger("DPlusSim").warning(
+            "Unbekannter D-Bus-Typ '%s', verwende '%s'", normalized, fallback_bus
+        )
+        normalized = fallback_bus
+
+    bus_type: Optional[Any] = None
+    if BusType is not None:
+        if normalized == "session":
+            bus_type = getattr(BusType, "SESSION", getattr(BusType, "SYSTEM", None))
+        else:
+            bus_type = getattr(BusType, "SYSTEM", getattr(BusType, "SESSION", None))
+
+    return normalized, bus_type
+
+
 async def run_async(args: argparse.Namespace) -> None:
     merged_settings = DEFAULT_SETTINGS.copy()
     if args.bus:
@@ -1865,6 +1888,11 @@ async def run_async(args: argparse.Namespace) -> None:
     settings_backend: Optional[BaseSettingsAdapter] = None
     settings_bus: Optional[MessageBus] = None
     settings_overrides: Dict[str, Any] = {}
+
+    selected_bus, bus_type_for_connection = resolve_bus_configuration(
+        args.bus if args.bus else merged_settings.get("dbus_bus", "system")
+    )
+    merged_settings["dbus_bus"] = selected_bus
 
     if not args.no_dbus:
         if (
@@ -1892,7 +1920,10 @@ async def run_async(args: argparse.Namespace) -> None:
             and Message is not None
         ):
             try:
-                settings_bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+                if bus_type_for_connection is not None:
+                    settings_bus = await MessageBus(bus_type=bus_type_for_connection).connect()
+                else:
+                    settings_bus = await MessageBus().connect()
                 bridge = SettingsBridge(settings_bus, SETTINGS_DEFINITIONS)
                 settings_backend = DbusNextSettingsAdapter(bridge)
                 settings_overrides = await settings_backend.start()
@@ -1933,7 +1964,11 @@ async def run_async(args: argparse.Namespace) -> None:
 
     merged_settings.update(settings_overrides)
     if args.bus:
-        merged_settings["dbus_bus"] = args.bus
+        merged_settings["dbus_bus"] = selected_bus
+    else:
+        merged_settings["dbus_bus"], _ = resolve_bus_configuration(
+            merged_settings.get("dbus_bus", selected_bus)
+        )
 
     controller = DPlusController(merged_settings, use_gpio=not args.dry_run)
 
