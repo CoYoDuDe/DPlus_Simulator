@@ -986,9 +986,14 @@ class GPIOController:
         if new_pin == self._pin:
             return
         self._logger.info("GPIO wird von Pin %s auf Pin %s umkonfiguriert", self._pin, new_pin)
+        previous_state = self._state
         if self._enabled:
             _RPiGPIO.cleanup(self._pin)
             _RPiGPIO.setup(new_pin, _RPiGPIO.OUT)
+            _RPiGPIO.output(
+                new_pin,
+                _RPiGPIO.HIGH if previous_state else _RPiGPIO.LOW,
+            )
         self._pin = new_pin
 
     def write(self, state: bool) -> None:
