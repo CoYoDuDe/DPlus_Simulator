@@ -1,0 +1,15 @@
+--- FileSets/PatchSource/PageSettings.qml.orig	2025-10-14 21:43:53.080606936 +0000
++++ FileSets/PatchSource/PageSettings.qml	2025-10-14 21:47:47.424982689 +0000
+@@ -149,6 +149,12 @@
+ 			show: hasRelay0
+ 		}
+ 
++		////// added for D+ simulator package
++		MbSubMenu {
++			description: qsTr("D+ simulator")
++			subpage: Component { PageSettingsDPlusSimulator {} }
++		}
++
+ 		MbSubMenu {
+ 			description: qsTr("Tank pump")
+ 			subpage: Component { PageSettingsTankPump {} }
