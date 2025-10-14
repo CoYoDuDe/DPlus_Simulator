@@ -15,24 +15,6 @@ Der DPlus Simulator stellt eine Software-Komponente bereit, mit der die D+-Signa
 
 ## Installation
 Die Installation erfolgt über den SetupHelper in Kombination mit dem Victron PackageManager:
-1. Kopieren Sie das Paket auf das GX-Gerät (z. B. per SCP).
-2. Öffnen Sie den SetupHelper und wählen Sie die Option **PackageManager**.
-3. Installieren Sie das Paket `dplus-simulator` und bestätigen Sie den Installationsdialog.
-4. Überprüfen Sie das PackageManager-Log, um den erfolgreichen Abschluss der Installation zu verifizieren.
-
-> **Hinweis:** Die Datei `gitHubInfo` liefert dem PackageManager die notwendigen Metadaten, um automatische Updates gegen das GitHub-Repository `CoYoDuDe/DPlus_Simulator` einzurichten.
-
-### SetupHelper-Archiv erstellen
-Um ein aktuelles Release-Archiv zu erzeugen, steht das Skript `tools/create_release_archive.sh` zur Verfügung. Es setzt die
-Ausführungsrechte für `setup` sowie alle `services/*/run`-Skripte und erstellt anschließend das tar.gz-Archiv mit den von
-SetupHelper erwarteten Eigentümern und Rechten.
-
-```bash
-./tools/create_release_archive.sh build/DPlus_Simulator-latest.tgz
-```
-
-Ohne Argument legt das Skript ein datumsbasiertes Archiv im Projektwurzelverzeichnis an. Bereits vorhandene Archive mit der
-Endung `.tgz` werden bei der Paketierung automatisch ausgeschlossen, sodass immer der aktuelle Repostand im Archiv landet.
 
 ### Konfigurationspfade
 Die Konfiguration erfolgt über den Victron DBus (Service `com.victronenergy.settings`).
@@ -84,14 +66,3 @@ Damit lassen sich die Entscheidungen des Reglers transparent nachverfolgen.
 | Simulation startet nicht | Paket nicht installiert oder Dienst nicht aktiv | PackageManager-Log prüfen, Dienst neu starten (`svc -t dplus-simulator`) |
 | Kein Ausgangssignal | Falsche Hardware-Verdrahtung oder fehlender Ausgangstreiber | Verkabelung prüfen, Relais/MOSFET auf Funktion testen |
 | Fehlende DBus-Einträge | Service nicht registriert | Systemlog (`journalctl -u dplus-simulator`) prüfen |
-
-## Tests
-- Manuelle Funktionsprüfung über den DBus-Explorer.
-- Überwachung der Ausgangssignale mit einem Multimeter oder Oszilloskop.
-
-## Bekannte Einschränkungen
-- Keine native Unterstützung für alternative Kommunikationsbusse.
-- Abhängigkeit vom Victron Venus OS in der aktuellen Version.
-
-## Lizenz
-Dieses Projekt steht unter der MIT-Lizenz. Details finden Sie in der Datei [LICENSE](LICENSE).
