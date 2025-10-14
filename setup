@@ -6,13 +6,22 @@ PROJECT_ROOT="${SCRIPT_DIR}"
 INSTALL_ROOT="${INSTALL_ROOT:-/opt/dplus_sim}"
 SERVICE_NAME="com.coyodude.dplussim"
 SERVICE_INSTALL_DIR="${INSTALL_ROOT}/services/${SERVICE_NAME}"
-HELPER_RESOURCE="/data/SetupHelper/HelperResources/forSetupScript"
+HELPER_RESOURCE="/data/SetupHelper/HelperResources/IncludeHelpers"
 SETTINGS_BASE_PATH="/Settings/Devices/DPlusSim"
 PACKAGE_DEPENDENCIES_FILE="${PROJECT_ROOT}/packageDependencies"
 
+filesUpdated=false
+servicesUpdated=false
+dbusSettingsUpdated=false
+declare -a _dbus_settings_entries=()
+
 log() {
-  local level="$1"
+  local level="${1^^}"
   shift
+  if declare -F logMessage >/dev/null; then
+    logMessage "${level}" "$*"
+    return
+  fi
   printf '[%s] %s\n' "${level}" "$*"
 }
 
@@ -31,33 +40,210 @@ copy_tree() {
     tar -C "${src}" -cf - . | tar -C "${dest}" -xf -
   fi
 }
-
-require_helper_function() {
+call_helper_function_if_available() {
   local fn="$1"
+  shift || true
   if ! declare -F "${fn}" >/dev/null; then
-    die "SetupHelper stellt die benötigte Funktion ${fn} nicht bereit"
+    return 127
+  fi
+
+  # Temporär striktes Fehler-Handling deaktivieren, um alternative Aufrufe
+  # ausprobieren zu können, ohne das Skript sofort abzubrechen.
+  set +e
+  "${fn}" "$@"
+  local status=$?
+  set -e
+  return ${status}
+}
+
+source_helper_resources() {
+  local helper_path="${HELPER_RESOURCE}"
+
+  if [[ -f "${helper_path}" ]]; then
+    if [[ ! -r "${helper_path}" ]]; then
+      die "SetupHelper-Ressource ${helper_path} nicht lesbar"
+    fi
+    # shellcheck disable=SC1090
+    source "${helper_path}"
+    return
+  fi
+
+  local -a helper_files=(
+    "${helper_path}/CommonResources"
+    "${helper_path}/ServiceResources"
+    "${helper_path}/DbusSettingsResources"
+  )
+
+  local missing=0
+  for file in "${helper_files[@]}"; do
+    if [[ ! -r "${file}" ]]; then
+      log WARN "SetupHelper-Ressource ${file} nicht gefunden"
+      missing=1
+      continue
+    fi
+    # shellcheck disable=SC1090
+    source "${file}"
+  done
+
+  if (( missing )); then
+    die "Erforderliche SetupHelper-Ressourcen konnten nicht geladen werden"
   fi
 }
 
-source_setup_helper() {
-  if [[ ! -r "${HELPER_RESOURCE}" ]]; then
-    die "SetupHelper-Ressource ${HELPER_RESOURCE} nicht gefunden"
+begin_helper_session() {
+  if declare -F beginScript >/dev/null; then
+    beginScript
+    return
   fi
-  # shellcheck disable=SC1090
-  source "${HELPER_RESOURCE}"
-
-  local required_functions=(
+  if declare -F helper_begin >/dev/null; then
     helper_begin
+  fi
+}
+
+end_helper_session() {
+  if declare -F endScript >/dev/null; then
+    endScript
+    return
+  fi
+  if declare -F helper_end >/dev/null; then
     helper_end
-    helper_install_service
-    helper_uninstall_service
-    helper_print_service_status
-    helper_register_settings
-    helper_unregister_settings
-  )
-  for fn in "${required_functions[@]}"; do
-    require_helper_function "${fn}"
-  done
+  fi
+}
+
+install_service() {
+  if call_helper_function_if_available installService "${SERVICE_NAME}" "${SERVICE_INSTALL_DIR}"; then
+    return
+  fi
+  if call_helper_function_if_available helper_install_service "${SERVICE_NAME}" "${SERVICE_INSTALL_DIR}"; then
+    return
+  fi
+  die "SetupHelper stellt keine Funktion zum Installieren des Dienstes bereit"
+}
+
+remove_service() {
+  if call_helper_function_if_available removeService "${SERVICE_NAME}"; then
+    return
+  fi
+  if call_helper_function_if_available helper_uninstall_service "${SERVICE_NAME}"; then
+    return
+  fi
+  die "SetupHelper stellt keine Funktion zum Entfernen des Dienstes bereit"
+}
+
+build_dbus_settings_entries() {
+  local list_path="$1"
+  if [[ ! -f "${list_path}" ]]; then
+    die "settingsList ${list_path} nicht gefunden"
+  fi
+  mapfile -t _dbus_settings_entries < "${list_path}"
+}
+
+register_dbus_settings() {
+  local list_path="${PROJECT_ROOT}/settingsList"
+  build_dbus_settings_entries "${list_path}"
+
+  if call_helper_function_if_available addAllDbusSettingsFromFile "${list_path}"; then
+    dbusSettingsUpdated=true
+    return
+  fi
+
+  if declare -F addAllDbusSettings >/dev/null; then
+    local settings_list_output=""
+    if declare -F DbusSettingsList >/dev/null; then
+      set +e
+      settings_list_output="$(DbusSettingsList "${_dbus_settings_entries[@]}")"
+      local list_status=$?
+      set -e
+      if [[ ${list_status} -eq 0 && -n "${settings_list_output}" ]]; then
+        call_helper_function_if_available addAllDbusSettings "${settings_list_output}" && {
+          dbusSettingsUpdated=true
+          return
+        }
+      fi
+    fi
+
+    if call_helper_function_if_available addAllDbusSettings "${list_path}"; then
+      dbusSettingsUpdated=true
+      return
+    fi
+
+    if call_helper_function_if_available addAllDbusSettings "${_dbus_settings_entries[@]}"; then
+      dbusSettingsUpdated=true
+      return
+    fi
+  fi
+
+  if declare -F helper_register_settings_with_metadata >/dev/null || declare -F helper_register_settings >/dev/null; then
+    if register_settings_definitions; then
+      dbusSettingsUpdated=true
+      return
+    fi
+  fi
+
+  die "SetupHelper stellt keine geeignete Funktion zum Registrieren der Einstellungen bereit"
+}
+
+unregister_dbus_settings() {
+  local list_path="${PROJECT_ROOT}/settingsList"
+  build_dbus_settings_entries "${list_path}"
+
+  if call_helper_function_if_available removeDbusSettingsFromFile "${list_path}"; then
+    dbusSettingsUpdated=true
+    return
+  fi
+
+  if declare -F removeDbusSettings >/dev/null; then
+    local settings_list_output=""
+    if declare -F DbusSettingsList >/dev/null; then
+      set +e
+      settings_list_output="$(DbusSettingsList "${_dbus_settings_entries[@]}")"
+      local list_status=$?
+      set -e
+      if [[ ${list_status} -eq 0 && -n "${settings_list_output}" ]]; then
+        call_helper_function_if_available removeDbusSettings "${settings_list_output}" && {
+          dbusSettingsUpdated=true
+          return
+        }
+      fi
+    fi
+
+    if call_helper_function_if_available removeDbusSettings "${list_path}"; then
+      dbusSettingsUpdated=true
+      return
+    fi
+
+    if call_helper_function_if_available removeDbusSettings "${_dbus_settings_entries[@]}"; then
+      dbusSettingsUpdated=true
+      return
+    fi
+  fi
+
+  if declare -F helper_unregister_settings >/dev/null; then
+    if helper_unregister_settings "${SETTINGS_BASE_PATH}"; then
+      dbusSettingsUpdated=true
+      return
+    fi
+  fi
+
+  log WARN "Einstellungsderegistrierung konnte nicht über SetupHelper durchgeführt werden"
+}
+
+service_is_up() {
+  if declare -F serviceIsUp >/dev/null; then
+    set +e
+    serviceIsUp "${SERVICE_NAME}"
+    local status=$?
+    set -e
+    return ${status}
+  fi
+
+  if declare -F helper_print_service_status >/dev/null; then
+    helper_print_service_status "${SERVICE_NAME}"
+    return 0
+  fi
+
+  log INFO "Statusabfrage für Dienst ${SERVICE_NAME} nicht verfügbar"
+  return 1
 }
 
 register_package_dependencies() {
@@ -164,44 +350,76 @@ install_payload() {
 }
 
 perform_install() {
-  helper_begin
+  filesUpdated=false
+  servicesUpdated=false
+  dbusSettingsUpdated=false
+
+  begin_helper_session
   register_package_dependencies
 
   install_payload
+  filesUpdated=true
 
-  helper_install_service "${SERVICE_NAME}" "${SERVICE_INSTALL_DIR}"
+  install_service
+  servicesUpdated=true
 
-  if ! register_settings_definitions; then
-    die "Registrierung der Einstellungen ist fehlgeschlagen"
-  fi
+  register_dbus_settings
 
-  helper_end
+  end_helper_session
   log INFO "Installation abgeschlossen"
 }
 
 perform_uninstall() {
-  helper_begin
+  filesUpdated=false
+  servicesUpdated=false
+  dbusSettingsUpdated=false
+
+  begin_helper_session
   register_package_dependencies
 
-  if ! helper_unregister_settings "${SETTINGS_BASE_PATH}"; then
-    log WARN "helper_unregister_settings konnte Einstellungen nicht deregistrieren"
-  fi
-  helper_uninstall_service "${SERVICE_NAME}"
+  unregister_dbus_settings
+
+  remove_service
+  servicesUpdated=true
 
   if [[ -d "${INSTALL_ROOT}" ]]; then
     log INFO "Entferne Installationsverzeichnis ${INSTALL_ROOT}"
     rm -rf "${INSTALL_ROOT}"
+    filesUpdated=true
   fi
 
-  helper_end
+  end_helper_session
   log INFO "Deinstallation abgeschlossen"
 }
 
 perform_status() {
-  helper_begin
+  filesUpdated=false
+  servicesUpdated=false
+  dbusSettingsUpdated=false
+
+  begin_helper_session
   register_package_dependencies
-  helper_print_service_status "${SERVICE_NAME}"
-  helper_end
+
+  local status_reported=false
+  if declare -F serviceIsUp >/dev/null; then
+    if service_is_up; then
+      log INFO "Dienst ${SERVICE_NAME} ist aktiv"
+    else
+      log WARN "Dienst ${SERVICE_NAME} ist nicht aktiv"
+    fi
+    status_reported=true
+  fi
+
+  if [[ "${status_reported}" == false ]] && declare -F helper_print_service_status >/dev/null; then
+    helper_print_service_status "${SERVICE_NAME}"
+    status_reported=true
+  fi
+
+  if [[ "${status_reported}" == false ]]; then
+    log WARN "Keine Statusfunktion für Dienst ${SERVICE_NAME} verfügbar"
+  fi
+
+  end_helper_session
 }
 
 usage() {
@@ -211,23 +429,84 @@ USAGE
 }
 
 main() {
-  local action="${1:-install}"
+  local cli_action="${1:-}"
+  local normalized_cli=""
 
-  source_setup_helper
+  if [[ -n "${cli_action}" ]]; then
+    case "${cli_action}" in
+      install|uninstall|status)
+        normalized_cli="${cli_action}"
+        ;;
+      -h|--help)
+        usage
+        return 0
+        ;;
+      *)
+        usage
+        return 1
+        ;;
+    esac
+  fi
 
-  case "${action}" in
-    install)
+  local helper_action="${scriptAction:-}"
+  if [[ -z "${helper_action}" ]]; then
+    case "${normalized_cli:-install}" in
+      install)
+        helper_action="INSTALL"
+        normalized_cli="install"
+        ;;
+      uninstall)
+        helper_action="UNINSTALL"
+        ;;
+      status)
+        helper_action="CHECK"
+        ;;
+    esac
+  else
+    local expected_from_cli=""
+    case "${normalized_cli}" in
+      install) expected_from_cli="INSTALL" ;;
+      uninstall) expected_from_cli="UNINSTALL" ;;
+      status) expected_from_cli="CHECK" ;;
+    esac
+
+    if [[ -n "${expected_from_cli}" && "${helper_action}" != "${expected_from_cli}" ]]; then
+      log WARN "scriptAction ${helper_action} stimmt nicht mit der CLI-Aktion ${normalized_cli} überein; verwende CLI-Aktion"
+      helper_action="${expected_from_cli}"
+    fi
+
+    if [[ -z "${normalized_cli}" ]]; then
+      case "${helper_action}" in
+        INSTALL) normalized_cli="install" ;;
+        UNINSTALL) normalized_cli="uninstall" ;;
+        CHECK) normalized_cli="status" ;;
+        *)
+          log WARN "Unbekannte scriptAction ${helper_action}, verwende INSTALL"
+          helper_action="INSTALL"
+          normalized_cli="install"
+          ;;
+      esac
+    fi
+  fi
+
+  scriptAction="${helper_action}"
+
+  source_helper_resources
+
+  case "${scriptAction}" in
+    INSTALL)
       perform_install
       ;;
-    uninstall)
+    UNINSTALL)
       perform_uninstall
       ;;
-    status)
+    CHECK)
       perform_status
       ;;
     *)
+      log ERROR "Unbekannte scriptAction ${scriptAction}"
       usage
-      exit 1
+      return 1
       ;;
   esac
 }
