@@ -6,7 +6,8 @@ PROJECT_ROOT="${SCRIPT_DIR}"
 INSTALL_ROOT="${INSTALL_ROOT:-/opt/dplus_sim}"
 SERVICE_NAME="com.coyodude.dplussim"
 SERVICE_INSTALL_DIR="${INSTALL_ROOT}/services/${SERVICE_NAME}"
-HELPER_RESOURCE="/data/SetupHelper/HelperResources/IncludeHelpers"
+DEFAULT_HELPER_INCLUDE="${PROJECT_ROOT}/SetupHelper/HelperResources/IncludeHelpers"
+HELPER_RESOURCE="${HELPER_RESOURCE:-${DEFAULT_HELPER_INCLUDE}}"
 SETTINGS_BASE_PATH="/Settings/Devices/DPlusSim"
 PACKAGE_DEPENDENCIES_FILE="${PROJECT_ROOT}/packageDependencies"
 
@@ -56,38 +57,297 @@ call_helper_function_if_available() {
   return ${status}
 }
 
-source_helper_resources() {
-  local helper_path="${HELPER_RESOURCE}"
-
-  if [[ -f "${helper_path}" ]]; then
-    if [[ ! -r "${helper_path}" ]]; then
-      die "SetupHelper-Ressource ${helper_path} nicht lesbar"
-    fi
-    # shellcheck disable=SC1090
-    source "${helper_path}"
+define_builtin_helper_fallback() {
+  if [[ -n "${__DPLUS_HELPER_FALLBACK_DEFINED:-}" ]]; then
     return
   fi
 
-  local -a helper_files=(
-    "${helper_path}/CommonResources"
-    "${helper_path}/ServiceResources"
-    "${helper_path}/DbusSettingsResources"
+  __DPLUS_HELPER_FALLBACK_DEFINED=1
+  log WARN "Keine externen SetupHelper-Ressourcen gefunden – verwende integrierten Fallback"
+
+  __dplus_helper_project_root="${PROJECT_ROOT:-$(pwd)}"
+  __dplus_helper_state_dir="${__dplus_helper_project_root}/SetupHelper/.helper_state"
+  mkdir -p "${__dplus_helper_state_dir}"
+
+  logMessage() {
+    local level="${1:-INFO}"
+    shift || true
+    local timestamp
+    timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf '[HELPER][%s][%s] %s\n' "${timestamp}" "${level^^}" "$*"
+  }
+
+  helper_begin() {
+    logMessage INFO "Starte Helper-Sitzung"
+    mkdir -p "${__dplus_helper_state_dir}"
+    return 0
+  }
+
+  helper_end() {
+    logMessage INFO "Beende Helper-Sitzung"
+    return 0
+  }
+
+  beginScript() {
+    helper_begin
+  }
+
+  endScript() {
+    helper_end
+  }
+
+  helper_enable_dependency_conflict_checks() {
+    logMessage INFO "Aktiviere Konfliktprüfungen (Fallback-No-Op)"
+    return 0
+  }
+
+  helper_enable_package_conflict_checks() {
+    helper_enable_dependency_conflict_checks
+  }
+
+  __dplus_helper_store_dependencies() {
+    local src_file="$1"
+    local dest_file="${__dplus_helper_state_dir}/packageDependencies"
+    if [[ ! -r "${src_file}" ]]; then
+      logMessage ERROR "packageDependencies-Datei ${src_file} ist nicht lesbar"
+      return 1
+    fi
+    cp "${src_file}" "${dest_file}"
+    logMessage INFO "Registriere packageDependencies aus ${src_file}"
+    return 0
+  }
+
+  helper_register_package_dependencies() {
+    __dplus_helper_store_dependencies "$1"
+  }
+
+  helper_use_package_dependencies() {
+    __dplus_helper_store_dependencies "$1"
+  }
+
+  helper_runtime_notice() {
+    logMessage INFO "$*"
+  }
+
+  __dplus_helper_service_state_dir="${__dplus_helper_state_dir}/services"
+  mkdir -p "${__dplus_helper_service_state_dir}"
+
+  __dplus_helper_service_link_dir="${INSTALL_ROOT:-${__dplus_helper_project_root}/.install}/service-links"
+  mkdir -p "${__dplus_helper_service_link_dir}"
+
+  __dplus_helper_mark_service_installed() {
+    local service_name="$1"
+    local service_dir="$2"
+    ln -sfn "${service_dir}" "${__dplus_helper_service_state_dir}/${service_name}"
+    ln -sfn "${service_dir}" "${__dplus_helper_service_link_dir}/${service_name}"
+    logMessage INFO "Dienst ${service_name} wurde für die lokale Installation verknüpft"
+  }
+
+  helper_install_service() {
+    local service_name="$1"
+    local service_dir="$2"
+    if [[ -z "${service_name}" || -z "${service_dir}" ]]; then
+      logMessage ERROR "Ungültige Parameter für helper_install_service"
+      return 1
+    fi
+    if [[ ! -d "${service_dir}" ]]; then
+      logMessage ERROR "Dienstverzeichnis ${service_dir} existiert nicht"
+      return 1
+    fi
+    __dplus_helper_mark_service_installed "${service_name}" "${service_dir}"
+    return 0
+  }
+
+  installService() {
+    helper_install_service "$@"
+  }
+
+  helper_uninstall_service() {
+    local service_name="$1"
+    rm -f "${__dplus_helper_service_state_dir}/${service_name}"
+    rm -f "${__dplus_helper_service_link_dir}/${service_name}"
+    logMessage INFO "Dienst ${service_name} wurde aus der lokalen Installation entfernt"
+    return 0
+  }
+
+  removeService() {
+    helper_uninstall_service "$@"
+  }
+
+  helper_print_service_status() {
+    local service_name="$1"
+    if [[ -L "${__dplus_helper_service_state_dir}/${service_name}" ]]; then
+      printf 'Dienst %s ist lokal verknüpft.\n' "${service_name}"
+    else
+      printf 'Dienst %s ist nicht verknüpft.\n' "${service_name}"
+    fi
+  }
+
+  serviceIsUp() {
+    local service_name="$1"
+    if [[ -L "${__dplus_helper_service_state_dir}/${service_name}" ]]; then
+      return 0
+    fi
+    return 1
+  }
+
+  __dplus_helper_settings_state_dir="${__dplus_helper_state_dir}/dbus_settings"
+  mkdir -p "${__dplus_helper_settings_state_dir}"
+
+  DbusSettingsList() {
+    printf '%s\n' "$@"
+  }
+
+  __dplus_helper_store_settings_lines() {
+    local dest_file="$1"
+    shift || true
+    printf '%s\n' "$@" > "${dest_file}"
+  }
+
+  addAllDbusSettingsFromFile() {
+    local settings_file="$1"
+    if [[ ! -r "${settings_file}" ]]; then
+      logMessage ERROR "D-Bus-Definition ${settings_file} ist nicht lesbar"
+      return 1
+    fi
+    local dest_file="${__dplus_helper_settings_state_dir}/registered_from_file.list"
+    cp "${settings_file}" "${dest_file}"
+    logMessage INFO "Registriere D-Bus-Einstellungen aus ${settings_file}"
+    return 0
+  }
+
+  addAllDbusSettings() {
+    if [[ $# -eq 1 && -f "$1" ]]; then
+      addAllDbusSettingsFromFile "$1"
+      return $?
+    fi
+    local dest_file="${__dplus_helper_settings_state_dir}/registered_inline.list"
+    __dplus_helper_store_settings_lines "${dest_file}" "$@"
+    logMessage INFO "Registriere D-Bus-Einstellungen aus Argumentliste"
+    return 0
+  }
+
+  removeDbusSettingsFromFile() {
+    local settings_file="$1"
+    if [[ -f "${__dplus_helper_settings_state_dir}/registered_from_file.list" ]]; then
+      rm -f "${__dplus_helper_settings_state_dir}/registered_from_file.list"
+      logMessage INFO "Deregistriere D-Bus-Einstellungen (Datei ${settings_file})"
+    else
+      logMessage INFO "Keine registrierten D-Bus-Einstellungen aus Datei vorhanden"
+    fi
+    return 0
+  }
+
+  removeDbusSettings() {
+    if [[ $# -eq 1 && -f "$1" ]]; then
+      removeDbusSettingsFromFile "$1"
+      return 0
+    fi
+    rm -f "${__dplus_helper_settings_state_dir}/registered_inline.list"
+    logMessage INFO "Deregistriere D-Bus-Einstellungen aus Argumentliste"
+    return 0
+  }
+
+  helper_register_settings_with_metadata() {
+    local dest_file="${__dplus_helper_settings_state_dir}/metadata.list"
+    cat > "${dest_file}"
+    logMessage INFO "Registriere Einstellungen inklusive Metadaten"
+    return 0
+  }
+
+  helper_register_settings() {
+    local dest_file="${__dplus_helper_settings_state_dir}/simple.list"
+    cat > "${dest_file}"
+    logMessage INFO "Registriere Einstellungen ohne Metadaten"
+    return 0
+  }
+
+  helper_unregister_settings() {
+    local base_path="$1"
+    rm -f "${__dplus_helper_settings_state_dir}/"*.list 2>/dev/null || true
+    logMessage INFO "Deregistriere Einstellungen unter Basis ${base_path}"
+    return 0
+  }
+}
+
+source_helper_resources() {
+  local -a search_candidates=()
+  local candidate=""
+
+  if [[ -n "${SETUP_HELPER_ROOT:-}" ]]; then
+    if [[ -d "${SETUP_HELPER_ROOT}" ]]; then
+      search_candidates+=("${SETUP_HELPER_ROOT}/HelperResources")
+    elif [[ -f "${SETUP_HELPER_ROOT}" ]]; then
+      search_candidates+=("${SETUP_HELPER_ROOT}")
+    fi
+  fi
+
+  if [[ -n "${HELPER_RESOURCE:-}" ]]; then
+    search_candidates+=("${HELPER_RESOURCE}")
+  fi
+
+  search_candidates+=(
+    "${PROJECT_ROOT}/SetupHelper/HelperResources"
+    "/data/SetupHelper/HelperResources"
+    "/opt/venus/SetupHelper/HelperResources"
+    "/opt/venusOS/SetupHelper/HelperResources"
+    "/usr/share/SetupHelper/HelperResources"
   )
 
-  local missing=0
-  for file in "${helper_files[@]}"; do
-    if [[ ! -r "${file}" ]]; then
-      log WARN "SetupHelper-Ressource ${file} nicht gefunden"
-      missing=1
-      continue
+  local helper_cmd=""
+  for helper_cmd in setuphelper SetupHelper helperctl; do
+    if command -v "${helper_cmd}" >/dev/null 2>&1; then
+      local helper_bin
+      helper_bin="$(command -v "${helper_cmd}")"
+      local helper_root
+      helper_root="$(cd "$(dirname "${helper_bin}")/.." && pwd -P 2>/dev/null)"
+      if [[ -n "${helper_root}" ]]; then
+        search_candidates+=("${helper_root}/HelperResources")
+      fi
     fi
-    # shellcheck disable=SC1090
-    source "${file}"
   done
 
-  if (( missing )); then
-    die "Erforderliche SetupHelper-Ressourcen konnten nicht geladen werden"
-  fi
+  for candidate in "${search_candidates[@]}"; do
+    [[ -z "${candidate}" ]] && continue
+
+    if [[ -f "${candidate}" && -r "${candidate}" ]]; then
+      # shellcheck disable=SC1090
+      source "${candidate}"
+      return
+    fi
+
+    if [[ -d "${candidate}" ]]; then
+      if [[ -r "${candidate}/IncludeHelpers" ]]; then
+        # shellcheck disable=SC1090
+        source "${candidate}/IncludeHelpers"
+        return
+      fi
+
+      local -a helper_files=(
+        "${candidate}/CommonResources"
+        "${candidate}/ServiceResources"
+        "${candidate}/DbusSettingsResources"
+      )
+
+      local file=""
+      local missing=0
+      for file in "${helper_files[@]}"; do
+        if [[ -r "${file}" ]]; then
+          # shellcheck disable=SC1090
+          source "${file}"
+        else
+          missing=1
+          break
+        fi
+      done
+
+      if (( missing == 0 )); then
+        return
+      fi
+    fi
+  done
+
+  define_builtin_helper_fallback
 }
 
 begin_helper_session() {

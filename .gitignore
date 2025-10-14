@@ -1,2 +1,5 @@
 # Ignoriere Veröffentlichungsarchive (werden bei Bedarf neu erzeugt)
 *.tgz
+
+# Helper-Laufzeitdaten
+SetupHelper/.helper_state/
