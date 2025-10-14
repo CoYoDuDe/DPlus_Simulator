@@ -38,6 +38,9 @@ copy_tree() {
   if command -v rsync >/dev/null 2>&1; then
     rsync -a --delete "${src}/" "${dest}/"
   else
+    if [[ -d "${dest}" ]]; then
+      find "${dest}" -mindepth 1 -exec rm -rf {} +
+    fi
     tar -C "${src}" -cf - . | tar -C "${dest}" -xf -
   fi
 }
