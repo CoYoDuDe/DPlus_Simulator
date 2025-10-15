@@ -14,6 +14,7 @@ MbPage {
         property string relayFunctionNeutral: "none"
         property string mosfetFunctionPath: ""
         property string lastTaggedRelay: ""
+        property var relayFunctionRestoreValues: ({})
         VeQuickItemModel {
                 id: relayModel
                 source: "com.victronenergy.settings/Settings/Relays"
@@ -22,6 +23,7 @@ MbPage {
 
         function refreshRelayOptions() {
                 var options = []
+                var validChannels = {}
                 for (var i = 0; i < relayModel.count; ++i) {
                         var entry = relayModel.get(i)
                         if (!entry)
@@ -29,11 +31,21 @@ MbPage {
                         var value = extractRelayValue(entry)
                         if (!value)
                                 continue
+                        validChannels[value] = true
                         detectMosfetFunctionPath(entry, value)
                         var label = extractRelayLabel(entry, value)
                         options.push({ description: label, value: value })
                 }
                 relayOptions = options
+                for (var channel in root.relayFunctionRestoreValues) {
+                        if (!root.relayFunctionRestoreValues.hasOwnProperty(channel))
+                                continue
+                        if (validChannels[channel])
+                                continue
+                        delete root.relayFunctionRestoreValues[channel]
+                }
+                if (root.lastTaggedRelay && !validChannels[root.lastTaggedRelay])
+                        root.lastTaggedRelay = ""
         }
 
         function detectMosfetFunctionPath(entry, value) {
@@ -91,8 +103,10 @@ MbPage {
         }
 
         function initializeRelayAssignment() {
+                var selected = ""
                 if (relaySelector.item && relaySelector.item.value)
-                        root.lastTaggedRelay = relaySelector.item.value.toString()
+                        selected = relaySelector.item.value.toString()
+                updateRelayFunctionSelection(selected)
         }
 
         function settingsPath(suffix) {
@@ -116,6 +130,82 @@ MbPage {
                         item.destroy()
         }
 
+        function readFunctionValue(path) {
+                if (!path || !path.length)
+                        return ""
+                var item = Qt.createQmlObject('import com.victron.velib 1.0; VeQuickItem {}', root)
+                item.source = path
+                var value = ""
+                if (item && item.value !== undefined && item.value !== null)
+                        value = item.value.toString()
+                if (item)
+                        item.destroy()
+                return value
+        }
+
+        function cacheRelayFunction(channel) {
+                if (!channel || !channel.length)
+                        return
+                if (root.relayFunctionRestoreValues[channel] !== undefined)
+                        return
+                var existing = readFunctionValue(relayFunctionPath(channel))
+                if (existing === root.relayFunctionTag)
+                        existing = root.relayFunctionNeutral
+                if (!existing || !existing.length)
+                        existing = root.relayFunctionNeutral
+                root.relayFunctionRestoreValues[channel] = existing
+        }
+
+        function restoreRelayFunction(channel, fallbackToNeutral) {
+                if (!channel || !channel.length)
+                        return
+                var stored = root.relayFunctionRestoreValues[channel]
+                if (stored === undefined && fallbackToNeutral)
+                        stored = root.relayFunctionNeutral
+                if (stored !== undefined) {
+                        writeFunctionValue(relayFunctionPath(channel), stored)
+                        delete root.relayFunctionRestoreValues[channel]
+                }
+        }
+
+        function ensureExclusiveRelayFunction(activeChannel) {
+                var restoreTargets = []
+                for (var channel in root.relayFunctionRestoreValues) {
+                        if (!root.relayFunctionRestoreValues.hasOwnProperty(channel))
+                                continue
+                        if (channel === activeChannel)
+                                continue
+                        restoreTargets.push(channel)
+                }
+                for (var iRestore = 0; iRestore < restoreTargets.length; ++iRestore)
+                        restoreRelayFunction(restoreTargets[iRestore], true)
+                for (var i = 0; i < relayModel.count; ++i) {
+                        var entry = relayModel.get(i)
+                        if (!entry)
+                                continue
+                        var candidate = extractRelayValue(entry)
+                        if (!candidate || !candidate.length || candidate === activeChannel)
+                                continue
+                        var path = relayFunctionPath(candidate)
+                        var current = ""
+                        if (entry.value && entry.value.Function !== undefined && entry.value.Function !== null)
+                                current = entry.value.Function.toString()
+                        else
+                                current = readFunctionValue(path)
+                        if (current === root.relayFunctionTag)
+                                writeFunctionValue(path, root.relayFunctionNeutral)
+                }
+        }
+
+        function ensureOutputModeValue(mode) {
+                if (!outputModeOptions.item)
+                        return
+                var current = outputModeOptions.item.value ? outputModeOptions.item.value.toString() : ""
+                if (current === mode)
+                        return
+                outputModeOptions.item.setValue(mode)
+        }
+
         function updateMosfetFunctionTag(active) {
                 if (!root.mosfetFunctionPath || !root.mosfetFunctionPath.length)
                         return
@@ -126,15 +216,18 @@ MbPage {
 
         function updateRelayFunctionSelection(channel) {
                 var normalized = channel ? channel.toString() : ""
-                if (root.lastTaggedRelay && root.lastTaggedRelay.length && root.lastTaggedRelay !== normalized)
-                        writeFunctionValue(relayFunctionPath(root.lastTaggedRelay), root.relayFunctionNeutral)
                 if (normalized && normalized.length) {
+                        cacheRelayFunction(normalized)
+                        ensureExclusiveRelayFunction(normalized)
                         updateMosfetFunctionTag(false)
+                        ensureOutputModeValue("relay")
                         writeFunctionValue(relayFunctionPath(normalized), root.relayFunctionTag)
                         root.lastTaggedRelay = normalized
                 } else {
+                        ensureExclusiveRelayFunction("")
                         updateMosfetFunctionTag(true)
                         root.lastTaggedRelay = ""
+                        ensureOutputModeValue("gpio")
                 }
         }
 
@@ -155,7 +248,7 @@ MbPage {
                         description: qsTr("Ausgangsmodus")
                         bind: settingsPath("/OutputMode")
                         possibleValues: [
-                                MbOption { description: qsTr("GPIO-Pin"); value: "gpio" },
+                                MbOption { description: qsTr("GPIO-Pin (automatisch aktiv ohne Relay-Zuweisung)"); value: "gpio" },
                                 MbOption { description: qsTr("Relay"); value: "relay" }
                         ]
                 }
