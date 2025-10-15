@@ -114,7 +114,20 @@ MbPage {
                         possibleValues: relayOptions.length ? relayOptions : [
                                 MbOption { description: qsTr("Keine Relays gefunden"); value: "" }
                         ]
-                        show: outputModeOptions.item.value === "relay"
+                        show: relayOptions.length > 0
+                }
+
+                Connections {
+                        target: relaySelector.item
+                        onValueChanged: {
+                                if (!relaySelector.item)
+                                        return
+                                var selected = relaySelector.item.value ? relaySelector.item.value.toString() : ""
+                                if (selected.length === 0)
+                                        return
+                                if (outputModeOptions.item && outputModeOptions.item.value !== "relay")
+                                        outputModeOptions.item.setValue("relay")
+                        }
                 }
 
                 MbSwitch {
