@@ -65,9 +65,9 @@ MbPage {
                         description: qsTr("Zünd-Pull-Konfiguration")
                         bind: settingsPath("/IgnitionPull")
                         possibleValues: [
-                                MbOption { description: qsTr("Floating"); value: -1 },
-                                MbOption { description: qsTr("Pull-down"); value: 0 },
-                                MbOption { description: qsTr("Pull-up"); value: 1 }
+                                MbOption { description: qsTr("Floating"); value: "none" },
+                                MbOption { description: qsTr("Pull-down"); value: "down" },
+                                MbOption { description: qsTr("Pull-up"); value: "up" }
                         ]
                         show: useIgnitionSwitch.item.value
                 }
