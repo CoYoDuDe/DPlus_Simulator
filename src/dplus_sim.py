@@ -104,6 +104,33 @@ DEFAULT_OUTPUT_MODE = "gpio"
 DEFAULT_RELAY_CHANNEL = "4brelays/0"
 
 
+RELAY_FUNCTION_TAG = "dplus-simulator"
+RELAY_FUNCTION_NEUTRAL = "none"
+
+
+def normalize_relay_channel(channel: str) -> str:
+    """Normalisiert Relay-Kanalnamen unabhängig von Groß-/Kleinschreibung."""
+
+    text = str(channel or "").strip()
+    if not text:
+        return ""
+    text = text.replace("\\", "/")
+    text = text.strip("/")
+    lowered = text.lower()
+    if lowered.startswith("relay/"):
+        text = text[6:]
+        lowered = text.lower()
+    if lowered.startswith("com.victronenergy.system/"):
+        text = text[len("com.victronenergy.system/") :]
+        lowered = text.lower()
+    if lowered.startswith("relay/"):
+        text = text[6:]
+        lowered = text.lower()
+    if lowered.endswith("/state"):
+        text = text[: -len("/state")]
+    return text
+
+
 SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     "gpio_pin": {
         "path": "/Settings/Devices/DPlusSim/GpioPin",
@@ -520,6 +547,275 @@ def _variant_signature(value: Any) -> str:
         return "av"
     raise TypeError(f"Unsupported value for Variant: {value!r}")
 
+
+class RelayFunctionMonitor:
+    """Überwacht Funktionszuweisungen im gpiosetup-Relaisbaum."""
+
+    def __init__(
+        self,
+        bus: MessageBus,
+        *,
+        service_name: str = "com.victronenergy.settings",
+        function_tag: str = RELAY_FUNCTION_TAG,
+        neutral_value: str = RELAY_FUNCTION_NEUTRAL,
+    ) -> None:
+        self._bus = bus
+        self._service_name = service_name
+        self._function_tag = str(function_tag or RELAY_FUNCTION_TAG)
+        self._neutral_value = str(neutral_value or RELAY_FUNCTION_NEUTRAL)
+        self._logger = logging.getLogger(self.__class__.__name__)
+        self._assignments: Dict[str, str] = {}
+        self._callback: Optional[Callable[[Dict[str, str]], Awaitable[None] | None]] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._match_rule: Optional[str] = None
+        self._handler_registered = False
+        self._accepted_senders: Set[str] = {self._service_name}
+        self._refreshed_unknown_senders: Set[str] = set()
+
+    @property
+    def neutral_value(self) -> str:
+        return self._neutral_value
+
+    @property
+    def function_tag(self) -> str:
+        return self._function_tag
+
+    def set_callback(
+        self, callback: Optional[Callable[[Dict[str, str]], Awaitable[None] | None]]
+    ) -> None:
+        self._callback = callback
+
+    async def start(self) -> Dict[str, str]:
+        if Message is None:
+            raise RuntimeError("D-Bus-Unterstützung ist nicht verfügbar")
+        self._loop = asyncio.get_running_loop()
+        await self._register_match_rule()
+        self._bus.add_message_handler(self._handle_message)
+        self._handler_registered = True
+        await self._update_unique_sender()
+        assignments = await self._read_assignments()
+        self._assignments = dict(assignments)
+        return dict(assignments)
+
+    async def stop(self) -> None:
+        if self._handler_registered:
+            self._bus.remove_message_handler(self._handle_message)
+            self._handler_registered = False
+        await self._remove_match_rule()
+
+    async def refresh(self) -> Dict[str, str]:
+        assignments = await self._read_assignments()
+        self._assignments = assignments
+        await self._emit_update(assignments)
+        return dict(assignments)
+
+    async def set_function(self, channel: str, value: str) -> None:
+        if Message is None:
+            raise RuntimeError("D-Bus-Unterstützung ist nicht verfügbar")
+        normalized = normalize_relay_channel(channel)
+        if not normalized:
+            return
+        typed_value = str(value)
+        try:
+            await self._bus.call(
+                Message(
+                    destination=self._service_name,
+                    path=f"/Settings/Relays/{normalized}/Function",
+                    interface="com.victronenergy.BusItem",
+                    member="SetValue",
+                    signature="v",
+                    body=[Variant(_variant_signature(typed_value), typed_value)],
+                )
+            )
+        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+            self._logger.warning(
+                "SetValue für Relay-Funktion %s konnte nicht geschrieben werden: %s",
+                normalized,
+                exc,
+            )
+
+    async def _read_assignments(self) -> Dict[str, str]:
+        if Message is None:
+            return {}
+        try:
+            reply = await self._bus.call(
+                Message(
+                    destination=self._service_name,
+                    path="/Settings/Relays",
+                    interface="com.victronenergy.BusItem",
+                    member="GetValue",
+                )
+            )
+        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+            self._logger.debug(
+                "Relais-Funktionen konnten nicht gelesen werden: %s",
+                exc,
+            )
+            return {}
+        body = reply.body[0] if reply.body else None
+        root_value = self._unwrap_variant(body)
+        assignments: Dict[str, str] = {}
+        self._collect_assignments(root_value, "", assignments)
+        return assignments
+
+    def _collect_assignments(
+        self, node: Any, prefix: str, assignments: Dict[str, str]
+    ) -> None:
+        if isinstance(node, dict):
+            function_value: Optional[str] = None
+            for key, value in node.items():
+                key_text = str(key)
+                if key_text.lower() == "function":
+                    function_value = str(self._unwrap_variant(value))
+                else:
+                    new_prefix = f"{prefix}/{key_text}" if prefix else key_text
+                    self._collect_assignments(value, new_prefix, assignments)
+            if function_value is not None and prefix:
+                assignments[normalize_relay_channel(prefix)] = function_value
+        elif isinstance(node, (list, tuple)):
+            for index, value in enumerate(node):
+                new_prefix = f"{prefix}/{index}" if prefix else str(index)
+                self._collect_assignments(value, new_prefix, assignments)
+
+    def _handle_message(self, message: Any) -> bool:
+        if message is None:
+            return False
+        if getattr(message, "message_type", None) != getattr(MessageType, "SIGNAL", None):
+            return False
+        sender = getattr(message, "sender", None)
+        if sender not in self._accepted_senders:
+            if (
+                isinstance(sender, str)
+                and sender.startswith(":")
+                and sender not in self._refreshed_unknown_senders
+            ):
+                self._refreshed_unknown_senders.add(sender)
+                self._schedule_unique_sender_update()
+            return False
+        path = getattr(message, "path", None)
+        if not isinstance(path, str) or not path.startswith("/Settings/Relays/"):
+            return False
+        if getattr(message, "member", None) != "PropertiesChanged":
+            return False
+        body = getattr(message, "body", [])
+        if len(body) < 2 or not isinstance(body[1], dict):
+            return False
+        changes = body[1]
+        if "Value" not in changes:
+            return False
+        channel = self._extract_channel_from_path(path)
+        if not channel:
+            return False
+        value = str(self._unwrap_variant(changes["Value"]))
+        normalized = normalize_relay_channel(channel)
+        previous = self._assignments.get(normalized)
+        if previous == value:
+            return False
+        self._assignments[normalized] = value
+        if self._loop is None:
+            return False
+        self._loop.create_task(self._emit_update(dict(self._assignments)))
+        return True
+
+    def _extract_channel_from_path(self, path: str) -> str:
+        suffix = path[len("/Settings/Relays/") :]
+        if suffix.endswith("/Function"):
+            suffix = suffix[: -len("/Function")]
+        return suffix
+
+    async def _emit_update(self, assignments: Dict[str, str]) -> None:
+        callback = self._callback
+        if callback is None:
+            return
+        try:
+            result = callback(dict(assignments))
+            if asyncio.iscoroutine(result):
+                await result
+        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+            self._logger.exception(
+                "Fehler beim Verarbeiten von Relay-Funktionsänderungen: %s",
+                exc,
+            )
+
+    @staticmethod
+    def _unwrap_variant(value: Any) -> Any:
+        if isinstance(value, Variant):
+            return RelayFunctionMonitor._unwrap_variant(value.value)
+        if isinstance(value, dict):
+            return {k: RelayFunctionMonitor._unwrap_variant(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [RelayFunctionMonitor._unwrap_variant(v) for v in value]
+        return value
+
+    async def _register_match_rule(self) -> None:
+        if self._match_rule is not None or Message is None:
+            return
+        rule = (
+            "type='signal',interface='com.victronenergy.BusItem',sender='"
+            f"{self._service_name}',path_namespace='/Settings/Relays'"
+        )
+        try:
+            await self._bus.call(
+                Message(
+                    destination="org.freedesktop.DBus",
+                    path="/org/freedesktop/DBus",
+                    interface="org.freedesktop.DBus",
+                    member="AddMatch",
+                    signature="s",
+                    body=[rule],
+                )
+            )
+            self._match_rule = rule
+        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+            self._logger.debug("Konnte Match-Rule für Relay-Funktionen nicht setzen: %s", exc)
+
+    async def _remove_match_rule(self) -> None:
+        if self._match_rule is None or Message is None:
+            return
+        with contextlib.suppress(Exception):
+            await self._bus.call(
+                Message(
+                    destination="org.freedesktop.DBus",
+                    path="/org/freedesktop/DBus",
+                    interface="org.freedesktop.DBus",
+                    member="RemoveMatch",
+                    signature="s",
+                    body=[self._match_rule],
+                )
+            )
+        self._match_rule = None
+
+    async def _update_unique_sender(self) -> None:
+        if Message is None:
+            return
+        try:
+            reply = await self._bus.call(
+                Message(
+                    destination="org.freedesktop.DBus",
+                    path="/org/freedesktop/DBus",
+                    interface="org.freedesktop.DBus",
+                    member="GetNameOwner",
+                    signature="s",
+                    body=[self._service_name],
+                )
+            )
+        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+            self._logger.debug(
+                "Konnte eindeutige Sender-ID für Relay-Funktionen nicht bestimmen: %s",
+                exc,
+            )
+            return
+        owner = reply.body[0] if reply.body else None
+        owner = getattr(owner, "value", owner)
+        if isinstance(owner, str) and owner:
+            self._accepted_senders.add(owner)
+            self._refreshed_unknown_senders.discard(owner)
+
+    def _schedule_unique_sender_update(self) -> None:
+        loop = self._loop
+        if loop is None or not loop.is_running():
+            return
+        loop.create_task(self._update_unique_sender())
 
 def dbusify(data: Dict[str, Any]) -> Dict[str, Any]:
     if Variant is None:  # type: ignore[truthy-bool]
@@ -1206,20 +1502,7 @@ class RelayController:
 
     @staticmethod
     def _normalize_channel(channel: str) -> str:
-        text = str(channel or "").strip()
-        if not text:
-            return ""
-        text = text.replace("\\", "/")
-        text = text.strip("/")
-        if text.lower().startswith("relay/"):
-            text = text[6:]
-        if text.lower().startswith("com.victronenergy.system/"):
-            text = text[len("com.victronenergy.system/") :]
-        if text.lower().startswith("relay/"):
-            text = text[6:]
-        if text.lower().endswith("/state"):
-            text = text[: -len("/state")]
-        return text
+        return normalize_relay_channel(channel)
 
     @property
     def channel(self) -> str:
@@ -1686,9 +1969,142 @@ class DPlusController:
         self._status.voltage_source_last_update = 0.0
         self._voltage_provider_details: Dict[str, Any] = {}
         self._voltage_source_available = True
+        self._relay_function_monitor: Optional[RelayFunctionMonitor] = None
+        self._relay_function_assignments: Dict[str, str] = {}
+        self._relay_function_tag = RELAY_FUNCTION_TAG
+        self._relay_function_neutral = RELAY_FUNCTION_NEUTRAL
+        self._assigned_function_channel: Optional[str] = None
 
     def set_status_callback(self, callback: Optional[StatusCallback]) -> None:
         self._status_callback = callback
+
+    def attach_relay_function_monitor(self, monitor: RelayFunctionMonitor) -> None:
+        self._relay_function_monitor = monitor
+        monitor.set_callback(self._handle_relay_function_update)
+
+    async def initialize_relay_function_assignments(
+        self, assignments: Dict[str, str]
+    ) -> None:
+        await self._process_relay_function_assignments(assignments, initial=True)
+
+    def _handle_relay_function_update(
+        self, assignments: Dict[str, str]
+    ) -> Optional[Awaitable[None]]:
+        return self._process_relay_function_assignments(assignments)
+
+    async def _process_relay_function_assignments(
+        self, assignments: Dict[str, str], *, initial: bool = False
+    ) -> None:
+        normalized = {
+            normalize_relay_channel(channel): str(value)
+            for channel, value in assignments.items()
+            if channel
+        }
+        async with self._lock:
+            self._relay_function_assignments = normalized
+            target_channel = self._select_relay_assignment_channel(normalized)
+            changed = False
+            if target_channel:
+                changed = await self._apply_relay_assignment_locked(
+                    target_channel,
+                    initial=initial,
+                )
+            else:
+                changed = await self._apply_relay_release_locked(initial=initial)
+            if changed:
+                self._evaluate_locked()
+                await self._notify_status_locked()
+
+    def _select_relay_assignment_channel(self, assignments: Dict[str, str]) -> str:
+        tag = self._relay_function_tag.lower()
+        candidates = [
+            channel
+            for channel, value in assignments.items()
+            if str(value).strip().lower() == tag
+        ]
+        if not candidates:
+            return ""
+        current_channel = normalize_relay_channel(self._settings.get("relay_channel", ""))
+        if current_channel in candidates:
+            return current_channel
+        if self._assigned_function_channel in candidates:
+            return str(self._assigned_function_channel)
+        candidates.sort()
+        return candidates[0]
+
+    async def _apply_relay_assignment_locked(
+        self, channel: str, *, initial: bool = False
+    ) -> bool:
+        normalized = normalize_relay_channel(channel)
+        previous_mode = self._output_mode
+        previous_channel = normalize_relay_channel(self._settings.get("relay_channel", ""))
+        if previous_mode != "relay" or previous_channel != normalized:
+            self._settings["relay_channel"] = normalized
+            self._settings["output_mode"] = "relay"
+            self._output_mode = "relay"
+            self._apply_output_configuration(initial=initial)
+            self._status.output_mode = "relay"
+            self._status.relay_channel = normalized
+            self._status.output_target = getattr(
+                self._output_controller,
+                "description",
+                self._status.output_target,
+            )
+            self._status.gpio_state = self._output_controller.read()
+            self._assigned_function_channel = normalized
+            return True
+        self._assigned_function_channel = normalized
+        return False
+
+    async def _apply_relay_release_locked(self, *, initial: bool = False) -> bool:
+        if self._output_mode == "gpio":
+            if self._assigned_function_channel:
+                self._assigned_function_channel = None
+            return False
+        self._settings["output_mode"] = "gpio"
+        self._output_mode = "gpio"
+        self._apply_output_configuration(initial=initial)
+        self._status.output_mode = "gpio"
+        self._status.relay_channel = ""
+        self._status.output_target = getattr(
+            self._output_controller,
+            "description",
+            self._status.output_target,
+        )
+        self._status.gpio_state = self._output_controller.read()
+        self._assigned_function_channel = None
+        return True
+
+    async def _update_relay_function_assignment_locked(self) -> None:
+        monitor = self._relay_function_monitor
+        if monitor is None:
+            return
+        target_channel = self._relay.channel if self._output_mode == "relay" else ""
+        previous_channel = self._assigned_function_channel
+        neutral = self._relay_function_neutral
+        if previous_channel and previous_channel != target_channel:
+            try:
+                await monitor.set_function(previous_channel, neutral)
+                self._relay_function_assignments[previous_channel] = neutral
+            except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+                self._logger.warning(
+                    "Konnte Funktionskennzeichnung für Relay %s nicht zurücksetzen: %s",
+                    previous_channel,
+                    exc,
+                )
+        if target_channel:
+            try:
+                await monitor.set_function(target_channel, self._relay_function_tag)
+                self._relay_function_assignments[target_channel] = self._relay_function_tag
+                self._assigned_function_channel = target_channel
+            except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+                self._logger.warning(
+                    "Konnte Relay-Funktion für %s nicht setzen: %s",
+                    target_channel,
+                    exc,
+                )
+        else:
+            self._assigned_function_channel = None
 
     def _resolve_on_voltage(self) -> float:
         value = self._settings.get("on_voltage")
@@ -1841,6 +2257,8 @@ class DPlusController:
 
     async def update_settings(self, new_settings: Dict[str, Any]) -> Dict[str, Any]:
         async with self._lock:
+            previous_output_mode = self._output_mode
+            previous_relay_channel = self._relay.channel
             self._settings.update(new_settings)
             self._switch.configure(
                 on_threshold=self._resolve_on_voltage(),
@@ -1849,6 +2267,8 @@ class DPlusController:
                 on_delay=self._resolve_on_delay(),
                 off_delay=self._resolve_off_delay(),
             )
+            relay_channel_changed = False
+            output_mode_changed = False
             if "gpio_pin" in new_settings:
                 self._gpio.reconfigure(int(self._settings["gpio_pin"]))
             if "ignition_gpio" in new_settings:
@@ -1858,10 +2278,15 @@ class DPlusController:
             if "dbus_bus" in new_settings:
                 self._relay.set_bus_choice(self._settings.get("dbus_bus", "system"))
             if "relay_channel" in new_settings:
+                new_channel = normalize_relay_channel(
+                    self._settings.get("relay_channel", "")
+                )
+                relay_channel_changed = new_channel != previous_relay_channel
                 self._relay.reconfigure(self._settings.get("relay_channel", ""))
             if "output_mode" in new_settings:
                 new_mode = self._normalize_output_mode(self._settings.get("output_mode"))
                 if new_mode != self._output_mode:
+                    output_mode_changed = new_mode != previous_output_mode
                     self._output_mode = new_mode
                     self._apply_output_configuration()
             elif "relay_channel" in new_settings or "dbus_bus" in new_settings:
@@ -1894,6 +2319,8 @@ class DPlusController:
                 self._relay.channel if self._output_mode == "relay" else ""
             )
             self._status.gpio_state = self._output_controller.read()
+            if output_mode_changed or relay_channel_changed:
+                await self._update_relay_function_assignment_locked()
             self._evaluate_locked()
             await self._notify_status_locked()
             return self.get_status()
@@ -2279,6 +2706,27 @@ async def run_async(args: argparse.Namespace) -> None:
         )
 
     controller = DPlusController(merged_settings, use_gpio=not args.dry_run)
+    relay_function_monitor: Optional[RelayFunctionMonitor] = None
+    if (
+        settings_bus is not None
+        and MessageBus is not None
+        and Message is not None
+    ):
+        try:
+            relay_function_monitor = RelayFunctionMonitor(settings_bus)
+            controller.attach_relay_function_monitor(relay_function_monitor)
+            assignments = await relay_function_monitor.start()
+            await controller.initialize_relay_function_assignments(assignments)
+            logging.getLogger("DPlusSim").debug(
+                "Relay-Funktionsüberwachung aktiviert (%d Einträge)",
+                len(assignments),
+            )
+        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+            logging.getLogger("DPlusSim").warning(
+                "Überwachung der Relay-Funktionen konnte nicht initialisiert werden: %s",
+                exc,
+            )
+            relay_function_monitor = None
 
     voltage_reader: Optional[DbusVoltageReader] = None
     if (
@@ -2463,6 +2911,10 @@ async def run_async(args: argparse.Namespace) -> None:
             waveform_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await waveform_task
+
+        if relay_function_monitor is not None:
+            with contextlib.suppress(Exception):
+                await relay_function_monitor.stop()
 
         with contextlib.suppress(Exception):
             await controller.set_voltage_provider(

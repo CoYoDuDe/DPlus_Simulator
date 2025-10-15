@@ -10,6 +10,10 @@ MbPage {
 
         property string settingsPrefix: "com.victronenergy.settings/Settings/Devices/DPlusSim"
         property var relayOptions: []
+        property string relayFunctionTag: "dplus-simulator"
+        property string relayFunctionNeutral: "none"
+        property string mosfetFunctionPath: ""
+        property string lastTaggedRelay: ""
         VeQuickItemModel {
                 id: relayModel
                 source: "com.victronenergy.settings/Settings/Relays"
@@ -25,10 +29,26 @@ MbPage {
                         var value = extractRelayValue(entry)
                         if (!value)
                                 continue
+                        detectMosfetFunctionPath(entry, value)
                         var label = extractRelayLabel(entry, value)
                         options.push({ description: label, value: value })
                 }
                 relayOptions = options
+        }
+
+        function detectMosfetFunctionPath(entry, value) {
+                if (root.mosfetFunctionPath && root.mosfetFunctionPath.length)
+                        return
+                var candidate = value.toString().toLowerCase()
+                if (candidate.indexOf("mosfet") >= 0 || candidate.indexOf("digitaloutput") >= 0) {
+                        root.mosfetFunctionPath = relayFunctionPath(value)
+                        return
+                }
+                if (entry && entry.value && entry.value.FunctionPath) {
+                        var path = entry.value.FunctionPath.toString()
+                        if (path.toLowerCase().indexOf("digitaloutput") >= 0)
+                                root.mosfetFunctionPath = path
+                }
         }
 
         function extractRelayLabel(entry, fallback) {
@@ -65,10 +85,57 @@ MbPage {
                 return key
         }
 
-        Component.onCompleted: refreshRelayOptions()
+        Component.onCompleted: {
+                refreshRelayOptions()
+                initializeRelayAssignment()
+        }
+
+        function initializeRelayAssignment() {
+                if (relaySelector.item && relaySelector.item.value)
+                        root.lastTaggedRelay = relaySelector.item.value.toString()
+        }
 
         function settingsPath(suffix) {
                 return Utils.path(settingsPrefix, suffix)
+        }
+
+        function relayFunctionPath(channel) {
+                if (!channel || !channel.toString().length)
+                        return ""
+                return "com.victronenergy.settings/Settings/Relays/" + channel + "/Function"
+        }
+
+        function writeFunctionValue(path, value) {
+                if (!path || !path.length)
+                        return
+                var item = Qt.createQmlObject('import com.victron.velib 1.0; VeQuickItem {}', root)
+                item.source = path
+                if (item && item.setValue)
+                        item.setValue(value)
+                if (item)
+                        item.destroy()
+        }
+
+        function updateMosfetFunctionTag(active) {
+                if (!root.mosfetFunctionPath || !root.mosfetFunctionPath.length)
+                        return
+                writeFunctionValue(
+                            root.mosfetFunctionPath,
+                            active ? root.relayFunctionTag : root.relayFunctionNeutral)
+        }
+
+        function updateRelayFunctionSelection(channel) {
+                var normalized = channel ? channel.toString() : ""
+                if (root.lastTaggedRelay && root.lastTaggedRelay.length && root.lastTaggedRelay !== normalized)
+                        writeFunctionValue(relayFunctionPath(root.lastTaggedRelay), root.relayFunctionNeutral)
+                if (normalized && normalized.length) {
+                        updateMosfetFunctionTag(false)
+                        writeFunctionValue(relayFunctionPath(normalized), root.relayFunctionTag)
+                        root.lastTaggedRelay = normalized
+                } else {
+                        updateMosfetFunctionTag(true)
+                        root.lastTaggedRelay = ""
+                }
         }
 
         model: VisibleItemModel {
@@ -123,10 +190,26 @@ MbPage {
                                 if (!relaySelector.item)
                                         return
                                 var selected = relaySelector.item.value ? relaySelector.item.value.toString() : ""
-                                if (selected.length === 0)
+                                if (selected.length === 0) {
+                                        updateRelayFunctionSelection("")
                                         return
+                                }
                                 if (outputModeOptions.item && outputModeOptions.item.value !== "relay")
                                         outputModeOptions.item.setValue("relay")
+                                updateRelayFunctionSelection(selected)
+                        }
+                }
+
+                Connections {
+                        target: outputModeOptions.item
+                        onValueChanged: {
+                                if (!outputModeOptions.item)
+                                        return
+                                var mode = outputModeOptions.item.value ? outputModeOptions.item.value.toString() : ""
+                                if (mode === "gpio")
+                                        updateRelayFunctionSelection("")
+                                else if (mode === "relay" && relaySelector.item && relaySelector.item.value)
+                                        updateRelayFunctionSelection(relaySelector.item.value.toString())
                         }
                 }
 
