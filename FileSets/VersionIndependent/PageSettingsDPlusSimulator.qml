@@ -139,11 +139,13 @@ MbPage {
                 MbEditBox {
                         description: qsTr("Aktivierungsverzögerung [s]")
                         item.bind: settingsPath("/ActivationDelaySeconds")
-                        inputMethodHints: Qt.ImhDigitsOnly
-                        maximumLength: 4
+                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                        maximumLength: 6
                         onEditDone: {
-                                var v = parseInt(newValue)
+                                var v = parseFloat(newValue)
                                 if (!isNaN(v)) {
+                                        if (v < 0.2)
+                                                v = 0.2
                                         item.setValue(v)
                                 }
                         }
@@ -152,11 +154,13 @@ MbPage {
                 MbEditBox {
                         description: qsTr("Deaktivierungsverzögerung [s]")
                         item.bind: settingsPath("/DeactivationDelaySeconds")
-                        inputMethodHints: Qt.ImhDigitsOnly
-                        maximumLength: 4
+                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                        maximumLength: 6
                         onEditDone: {
-                                var v = parseInt(newValue)
+                                var v = parseFloat(newValue)
                                 if (!isNaN(v)) {
+                                        if (v < 0.2)
+                                                v = 0.2
                                         item.setValue(v)
                                 }
                         }
@@ -165,11 +169,13 @@ MbPage {
                 MbEditBox {
                         description: qsTr("Einschaltverzögerung [s]")
                         item.bind: settingsPath("/OnDelaySec")
-                        inputMethodHints: Qt.ImhDigitsOnly
-                        maximumLength: 4
+                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                        maximumLength: 6
                         onEditDone: {
-                                var v = parseInt(newValue)
+                                var v = parseFloat(newValue)
                                 if (!isNaN(v)) {
+                                        if (v < 0.2)
+                                                v = 0.2
                                         item.setValue(v)
                                 }
                         }
@@ -178,11 +184,13 @@ MbPage {
                 MbEditBox {
                         description: qsTr("Ausschaltverzögerung [s]")
                         item.bind: settingsPath("/OffDelaySec")
-                        inputMethodHints: Qt.ImhDigitsOnly
-                        maximumLength: 4
+                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                        maximumLength: 6
                         onEditDone: {
-                                var v = parseInt(newValue)
+                                var v = parseFloat(newValue)
                                 if (!isNaN(v)) {
+                                        if (v < 0.2)
+                                                v = 0.2
                                         item.setValue(v)
                                 }
                         }
