@@ -10,6 +10,8 @@
 /Settings/Devices/DPlusSim/UseIgnition
 /Settings/Devices/DPlusSim/IgnitionGpio
 /Settings/Devices/DPlusSim/IgnitionPull
+/Settings/Devices/DPlusSim/OutputMode
+/Settings/Devices/DPlusSim/RelayChannel
 /Settings/Devices/DPlusSim/ForceOn
 /Settings/Devices/DPlusSim/ForceOff
 /Settings/Devices/DPlusSim/StatusPublishInterval

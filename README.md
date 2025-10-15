@@ -5,6 +5,7 @@ Der DPlus Simulator stellt eine Software-Komponente bereit, mit der die D+-Signa
 
 ## Funktionsumfang
 - Simulation des D+-Signals über konfigurierbare Ansteuerung des Ausgangstreibers.
+- Wahlweise Schaltung eines lokalen GPIO-Pins oder eines über gpiosetup registrierten Relais.
 - Frei definierbare Ein- und Ausschaltbedingungen inklusive optionaler Hysterese und Verzögerungen.
 - Verwaltung der Einstellungen über das Victron `com.victronenergy.settings`-Objekt.
 - Direkte Registrierung der Einstellungswerte über das Victron `SettingsDevice`, inklusive Live-Synchronisation mit dem Dienst.
@@ -28,6 +29,8 @@ Die wichtigsten Schlüssel im Gerätekontext `Settings/Devices/DPlusSim` sind:
 | `OnDelaySec` / `OffDelaySec` | Verzögerungen für das Ein- und Ausschalten. |
 | `UseIgnition` / `IgnitionGpio` | Aktiviert den Zündplus-Eingang und legt den Eingangspin fest. |
 | `IgnitionPull` | Legt den Pull-Up/-Down-Modus für den Zündplus-Eingang fest (`up`, `down`, `none`). |
+| `OutputMode` | Steuert, ob die Simulation einen GPIO (`gpio`) oder ein Relais (`relay`) nutzt. |
+| `RelayChannel` | Ausgewählter gpiosetup-Relay-Kanal (z. B. `4brelays/0`), exklusiv vom Simulator belegt. |
 | `ForceOn` / `ForceOff` | Erzwingt dauerhaft ein aktiviertes bzw. deaktiviertes Ausgangssignal. |
 | `StatusPublishInterval` | Aktualisierungsintervall der Statusmeldungen. |
 | `ServicePath` | D-Bus-Service, aus dem die Batteriespannung gelesen wird. |
@@ -38,6 +41,7 @@ Alle Werte lassen sich über den DBus-Explorer oder per `dbus-spy` anpassen. Än
 ### Statusinformationen
 Der bereitgestellte DBus-Service `com.coyodude.dplussim` publiziert neben dem bisherigen Status zusätzliche Informationen:
 - `effective_on_voltage` / `effective_off_voltage`: aktuell verwendete Schwellenwerte unter Berücksichtigung der Hysterese.
+- `output_mode` / `output_target` / `relay_channel`: zeigen, ob GPIO oder Relais geschaltet wird und welches Ziel adressiert ist.
 - `ignition`: Enthält Zustand, Aktivierung, Pin und Pull-Mode des Zündplus-Eingangs.
 - `allow_on` / `off_required`: Geben Auskunft über erfüllte Ein- und Ausschaltbedingungen.
 - `conditions`: Aufgeschlüsselte Einzelergebnisse der Ein- bzw. Ausschaltlogik inklusive Hysterese.
@@ -48,7 +52,7 @@ Damit lassen sich die Entscheidungen des Reglers transparent nachverfolgen.
 
 ## Hardware-Verdrahtung
 - **Zündplus-Eingang**: Verwenden Sie einen Spannungsteiler oder einen Optokoppler, um das Eingangssignal auf das zulässige Spannungsniveau des GX-Geräts zu bringen.
-- **Ausgangstreiber**: Schalten Sie das simulierte D+-Signal über ein Relais oder einen MOSFET, um die angeschlossenen Verbraucher galvanisch zu trennen und die notwendige Strombelastbarkeit sicherzustellen.
+- **Ausgangstreiber**: Schalten Sie das simulierte D+-Signal über ein Relais oder einen MOSFET, um die angeschlossenen Verbraucher galvanisch zu trennen und die notwendige Strombelastbarkeit sicherzustellen. Bei aktivem Relay-Modus sorgt der Simulator dafür, dass nicht gleichzeitig ein GPIO-Ausgang geschaltet bleibt.
 - Achten Sie auf saubere Masseverbindungen und ausreichend dimensionierte Leitungen.
 
 ## Schutzmaßnahmen
