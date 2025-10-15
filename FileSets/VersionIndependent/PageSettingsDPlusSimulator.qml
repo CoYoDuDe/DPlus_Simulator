@@ -9,6 +9,63 @@ MbPage {
         title: qsTr("D+ simulator")
 
         property string settingsPrefix: "com.victronenergy.settings/Settings/Devices/DPlusSim"
+        property var relayOptions: []
+        VeQuickItemModel {
+                id: relayModel
+                source: "com.victronenergy.settings/Settings/Relays"
+                onCountChanged: root.refreshRelayOptions()
+        }
+
+        function refreshRelayOptions() {
+                var options = []
+                for (var i = 0; i < relayModel.count; ++i) {
+                        var entry = relayModel.get(i)
+                        if (!entry)
+                                continue
+                        var value = extractRelayValue(entry)
+                        if (!value)
+                                continue
+                        var label = extractRelayLabel(entry, value)
+                        options.push({ description: label, value: value })
+                }
+                relayOptions = options
+        }
+
+        function extractRelayLabel(entry, fallback) {
+                if (entry.displayName)
+                        return entry.displayName
+                if (entry.value && entry.value.Name)
+                        return entry.value.Name
+                if (entry.value && entry.value.name)
+                        return entry.value.name
+                if (entry.name)
+                        return entry.name
+                return fallback
+        }
+
+        function extractRelayValue(entry) {
+                var key = ""
+                if (entry.uniqueKey)
+                        key = entry.uniqueKey.toString()
+                else if (entry.path)
+                        key = entry.path.toString()
+                if (!key && entry.value && entry.value.Path)
+                        key = entry.value.Path.toString()
+                if (!key && entry.value && entry.value.StatePath)
+                        key = entry.value.StatePath.toString()
+                if (!key)
+                        return ""
+                var relaysPrefix = "/Settings/Relays/"
+                var index = key.indexOf(relaysPrefix)
+                if (index >= 0)
+                        key = key.slice(index + relaysPrefix.length)
+                key = key.replace(/^Relays\//, "")
+                key = key.replace(/^\//, "")
+                key = key.replace(/\/State$/i, "")
+                return key
+        }
+
+        Component.onCompleted: refreshRelayOptions()
 
         function settingsPath(suffix) {
                 return Utils.path(settingsPrefix, suffix)
@@ -26,17 +83,38 @@ MbPage {
                         font.bold: true
                 }
 
+                MbItemOptions {
+                        id: outputModeOptions
+                        description: qsTr("Ausgangsmodus")
+                        bind: settingsPath("/OutputMode")
+                        possibleValues: [
+                                MbOption { description: qsTr("GPIO-Pin"); value: "gpio" },
+                                MbOption { description: qsTr("Relay"); value: "relay" }
+                        ]
+                }
+
                 MbEditBox {
                         description: qsTr("GPIO-Pin")
                         item.bind: settingsPath("/GpioPin")
                         inputMethodHints: Qt.ImhDigitsOnly
                         maximumLength: 2
+                        show: outputModeOptions.item.value !== "relay"
                         onEditDone: {
                                 var v = parseInt(newValue)
                                 if (!isNaN(v)) {
                                         item.setValue(v)
                                 }
                         }
+                }
+
+                MbItemOptions {
+                        id: relaySelector
+                        description: qsTr("Relay-Kanal")
+                        bind: settingsPath("/RelayChannel")
+                        possibleValues: relayOptions.length ? relayOptions : [
+                                MbOption { description: qsTr("Keine Relays gefunden"); value: "" }
+                        ]
+                        show: outputModeOptions.item.value === "relay"
                 }
 
                 MbSwitch {

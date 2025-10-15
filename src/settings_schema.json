@@ -63,6 +63,18 @@
       "description": "Pull-Up/-Down-Konfiguration für den Zündplus-Eingang.",
       "default": "down"
     },
+    "output_mode": {
+      "type": "string",
+      "enum": ["gpio", "relay"],
+      "description": "Legt fest, ob der Simulator einen GPIO oder ein Relay schaltet.",
+      "default": "gpio"
+    },
+    "relay_channel": {
+      "type": "string",
+      "minLength": 0,
+      "description": "Relay-Kanal aus der gpiosetup-Konfiguration (z. B. 4brelays/0).",
+      "default": "4brelays/0"
+    },
     "force_on": {
       "type": "boolean",
       "description": "Erzwingt ein dauerhaft eingeschaltetes Ausgangssignal.",
@@ -105,6 +117,8 @@
     "use_ignition",
     "ignition_gpio",
     "ignition_pull",
+    "output_mode",
+    "relay_channel",
     "force_on",
     "force_off",
     "dbus_bus",

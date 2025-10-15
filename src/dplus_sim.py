@@ -100,6 +100,8 @@ DEFAULT_ON_DELAY_SECONDS = DEFAULT_ACTIVATION_DELAY_SECONDS
 DEFAULT_OFF_DELAY_SECONDS = DEFAULT_DEACTIVATION_DELAY_SECONDS
 DEFAULT_IGNITION_GPIO = 4
 DEFAULT_IGNITION_PULL = "down"
+DEFAULT_OUTPUT_MODE = "gpio"
+DEFAULT_RELAY_CHANNEL = "4brelays/0"
 
 
 SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
@@ -196,6 +198,22 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "type": "s",
         "default": DEFAULT_IGNITION_PULL,
         "description": "Pull-Up/-Down-Konfiguration für den Zündplus-Eingang (up/down/none).",
+        "min": 0,
+        "max": 0,
+    },
+    "output_mode": {
+        "path": "/Settings/Devices/DPlusSim/OutputMode",
+        "type": "s",
+        "default": DEFAULT_OUTPUT_MODE,
+        "description": "Steuerungsmodus für den D+-Ausgang (gpio oder relay).",
+        "min": 0,
+        "max": 0,
+    },
+    "relay_channel": {
+        "path": "/Settings/Devices/DPlusSim/RelayChannel",
+        "type": "s",
+        "default": DEFAULT_RELAY_CHANNEL,
+        "description": "Ausgewählter Relay-Kanal aus der gpiosetup-Konfiguration.",
         "min": 0,
         "max": 0,
     },
@@ -1052,6 +1070,10 @@ class GPIOController:
     def read(self) -> bool:
         return self._state
 
+    @property
+    def description(self) -> str:
+        return f"gpio:{self._pin}"
+
     def close(self) -> None:
         if self._enabled:
             self._logger.debug("GPIO-Pin %s wird freigegeben", self._pin)
@@ -1158,6 +1180,188 @@ class GPIOInput:
             return pud_off
         return getattr(_RPiGPIO, "PUD_DOWN", None)
 
+
+class RelayController:
+    """Schaltet D-Bus-basierte Relays über com.victronenergy.system."""
+
+    def __init__(
+        self,
+        channel: str,
+        *,
+        bus_choice: str = "system",
+        enabled: bool = True,
+        service: str = "com.victronenergy.system",
+    ) -> None:
+        self._logger = logging.getLogger(self.__class__.__name__)
+        self._service = service or "com.victronenergy.system"
+        self._bus_choice = bus_choice or "system"
+        self._channel = self._normalize_channel(channel)
+        self._state = False
+        self._lock = threading.Lock()
+        self._enabled = enabled and VeDbusItemImport is not None and dbus is not None
+        self._item: Optional[Any] = None
+        self._bus: Optional[Any] = None
+        if not self._enabled:
+            self._logger.debug("RelayController läuft im Simulationsmodus")
+
+    @staticmethod
+    def _normalize_channel(channel: str) -> str:
+        text = str(channel or "").strip()
+        if not text:
+            return ""
+        text = text.replace("\\", "/")
+        text = text.strip("/")
+        if text.lower().startswith("relay/"):
+            text = text[6:]
+        if text.lower().startswith("com.victronenergy.system/"):
+            text = text[len("com.victronenergy.system/") :]
+        if text.lower().startswith("relay/"):
+            text = text[6:]
+        if text.lower().endswith("/state"):
+            text = text[: -len("/state")]
+        return text
+
+    @property
+    def channel(self) -> str:
+        return self._channel
+
+    @property
+    def service(self) -> str:
+        return self._service
+
+    @property
+    def bus_choice(self) -> str:
+        return self._bus_choice
+
+    @property
+    def description(self) -> str:
+        suffix = self._channel or "unset"
+        return f"relay:{suffix}"
+
+    def set_bus_choice(self, new_choice: str) -> None:
+        normalized = str(new_choice or "system").strip().lower()
+        if normalized not in {"system", "session"}:
+            normalized = "system"
+        if normalized == self._bus_choice:
+            return
+        self._logger.info("RelayController nutzt nun den %s-Bus", normalized)
+        self._bus_choice = normalized
+        self._reset()
+
+    def reconfigure(self, new_channel: str) -> None:
+        normalized = self._normalize_channel(new_channel)
+        if normalized == self._channel:
+            return
+        if self._channel:
+            self._logger.info(
+                "RelayController wechselt von '%s' auf '%s'",
+                self._channel,
+                normalized or "(kein Relay)",
+            )
+        else:
+            self._logger.info("RelayController setzt Kanal auf '%s'", normalized)
+        self._channel = normalized
+        self._reset()
+        self._state = False
+
+    def write(self, state: bool) -> None:
+        state_bool = bool(state)
+        if state_bool == self._state:
+            # trotzdem sicherstellen, dass der Zustand synchronisiert ist
+            if state_bool and not self._enabled:
+                self._state = state_bool
+            else:
+                self._sync_state(state_bool, force=False)
+            return
+        self._state = state_bool
+        self._sync_state(state_bool, force=True)
+
+    def read(self) -> bool:
+        if not self._enabled or not self._channel:
+            return self._state
+        value: Any = None
+        with self._lock:
+            item = self._ensure_item_locked()
+            if item is None:
+                return self._state
+            try:
+                value = item.get_value()
+            except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+                self._logger.debug("Konnte Relay-Zustand nicht lesen: %s", exc)
+                return self._state
+        if value is not None:
+            try:
+                self._state = bool(int(value))
+            except (TypeError, ValueError):
+                self._state = bool(value)
+        return self._state
+
+    def close(self) -> None:
+        self._reset()
+        self._state = False
+
+    def _reset(self) -> None:
+        with self._lock:
+            if self._item is not None:
+                self._item = None
+            if self._bus is not None:
+                with contextlib.suppress(Exception):
+                    close = getattr(self._bus, "close", None)
+                    if callable(close):
+                        close()
+                self._bus = None
+
+    def _sync_state(self, state: bool, *, force: bool) -> None:
+        if not self._enabled or not self._channel:
+            return
+        with self._lock:
+            item = self._ensure_item_locked()
+            if item is None:
+                return
+            try:
+                item.set_value(1 if state else 0)
+            except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+                if force:
+                    self._logger.warning(
+                        "Setzen des Relay-Zustands auf '%s' für %s ist fehlgeschlagen: %s",
+                        state,
+                        self.description,
+                        exc,
+                    )
+                else:
+                    self._logger.debug(
+                        "Synchronisieren des Relay-Zustands auf '%s' für %s ist fehlgeschlagen: %s",
+                        state,
+                        self.description,
+                        exc,
+                    )
+
+    def _ensure_item_locked(self) -> Optional[Any]:
+        if not self._enabled or not self._channel:
+            return None
+        if self._item is not None:
+            return self._item
+        assert dbus is not None
+        assert VeDbusItemImport is not None
+        bus = dbus.SystemBus() if self._bus_choice == "system" else dbus.SessionBus()
+        path = f"/Relay/{self._channel}/State"
+        try:
+            item = VeDbusItemImport(bus, self._service, path, createsignal=False)
+        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+            self._logger.warning(
+                "Verbindung zu %s%s konnte nicht aufgebaut werden: %s",
+                self._service,
+                path,
+                exc,
+            )
+            with contextlib.suppress(Exception):
+                close = getattr(bus, "close", None)
+                if callable(close):
+                    close()
+            return None
+        self._bus = bus
+        self._item = item
+        return item
 
 @dataclass
 class SwitchLogic:
@@ -1307,6 +1511,9 @@ class SimulatorStatus:
     off_voltage: float
     on_delay_seconds: float
     off_delay_seconds: float
+    output_mode: str = DEFAULT_OUTPUT_MODE
+    output_target: str = ""
+    relay_channel: str = ""
     pending_state: Optional[bool] = None
     deadline: Optional[float] = None
     effective_on_voltage: float = 0.0
@@ -1352,6 +1559,9 @@ class SimulatorStatus:
             "off_voltage": self.off_voltage,
             "on_delay_seconds": self.on_delay_seconds,
             "off_delay_seconds": self.off_delay_seconds,
+            "output_mode": self.output_mode,
+            "output_target": self.output_target,
+            "relay_channel": self.relay_channel,
             "pending_state": self.pending_state if self.pending_state is not None else "none",
             "deadline": self.deadline or 0.0,
             "effective_on_voltage": self.effective_on_voltage,
@@ -1411,11 +1621,20 @@ class DPlusController:
         self._settings = DEFAULT_SETTINGS.copy()
         self._settings.update(settings)
         self._gpio = GPIOController(self._settings["gpio_pin"], enabled=use_gpio)
+        self._relay = RelayController(
+            self._settings.get("relay_channel", DEFAULT_RELAY_CHANNEL),
+            bus_choice=self._settings.get("dbus_bus", "system"),
+            enabled=use_gpio,
+        )
         self._ignition_input = GPIOInput(
             self._settings["ignition_gpio"],
             enabled=use_gpio,
             pull_mode=self._settings.get("ignition_pull", DEFAULT_IGNITION_PULL),
         )
+        self._output_mode = self._normalize_output_mode(
+            self._settings.get("output_mode", DEFAULT_OUTPUT_MODE)
+        )
+        self._output_controller: Any = self._gpio
         self._switch = SwitchLogic(
             on_threshold=self._resolve_on_voltage(),
             off_threshold=self._resolve_off_voltage(),
@@ -1436,12 +1655,16 @@ class DPlusController:
             off_voltage=self._resolve_off_voltage(),
             on_delay_seconds=self._resolve_on_delay(),
             off_delay_seconds=self._resolve_off_delay(),
+            output_mode=self._output_mode,
+            output_target="",
+            relay_channel=str(self._settings.get("relay_channel", "")),
             ignition_enabled=bool(self._settings["use_ignition"]),
             ignition_gpio=int(self._settings["ignition_gpio"]),
             ignition_pull_mode=str(self._settings.get("ignition_pull", DEFAULT_IGNITION_PULL)),
             force_on_configured=bool(self._settings["force_on"]),
             force_off_configured=bool(self._settings.get("force_off", False)),
         )
+        self._apply_output_configuration(initial=True)
         self._status.effective_on_voltage = upper_threshold
         self._status.effective_off_voltage = lower_threshold
         self._status.ignition_state = self._ignition_input.read()
@@ -1490,6 +1713,45 @@ class DPlusController:
         if value is None:
             return float(self._settings["deactivation_delay_seconds"])
         return float(value)
+
+    @staticmethod
+    def _normalize_output_mode(mode: Any) -> str:
+        normalized = str(mode or "").strip().lower()
+        if normalized == "relay":
+            return "relay"
+        return "gpio"
+
+    def _apply_output_configuration(self, *, initial: bool = False) -> None:
+        previous = getattr(self, "_output_controller", None)
+        target_mode = self._normalize_output_mode(self._output_mode)
+        other_controller: Optional[Any] = None
+        if target_mode == "relay":
+            channel = str(self._settings.get("relay_channel") or "").strip()
+            if not channel:
+                channel = DEFAULT_RELAY_CHANNEL
+                self._settings["relay_channel"] = channel
+            self._relay.set_bus_choice(self._settings.get("dbus_bus", "system"))
+            self._relay.reconfigure(channel)
+            self._output_controller = self._relay
+            other_controller = self._gpio
+        else:
+            self._output_controller = self._gpio
+            other_controller = self._relay
+        if previous is not None and previous is not self._output_controller:
+            with contextlib.suppress(Exception):
+                previous.write(False)
+        if other_controller is not None and other_controller is not self._output_controller:
+            with contextlib.suppress(Exception):
+                other_controller.write(False)
+        self._output_mode = target_mode
+        self._status.output_mode = target_mode
+        self._status.output_target = getattr(self._output_controller, "description", "")
+        self._status.relay_channel = (
+            self._relay.channel if target_mode == "relay" else ""
+        )
+        self._status.gpio_state = self._output_controller.read()
+        if initial and target_mode == "relay" and not self._relay.channel:
+            self._status.relay_channel = ""
 
     async def set_voltage_provider(
         self,
@@ -1559,7 +1821,15 @@ class DPlusController:
             self._status.running = False
             if self._loop_task:
                 self._loop_task.cancel()
-            self._gpio.write(False)
+            with contextlib.suppress(Exception):
+                self._output_controller.write(False)
+            if self._output_controller is not self._gpio:
+                with contextlib.suppress(Exception):
+                    self._gpio.write(False)
+            if self._output_controller is not self._relay:
+                with contextlib.suppress(Exception):
+                    self._relay.write(False)
+            self._status.gpio_state = self._output_controller.read()
             await self._notify_status_locked()
         if self._loop_task:
             try:
@@ -1585,6 +1855,18 @@ class DPlusController:
                 self._ignition_input.reconfigure(int(self._settings["ignition_gpio"]))
             if "ignition_pull" in new_settings:
                 self._ignition_input.set_pull_mode(self._settings["ignition_pull"])
+            if "dbus_bus" in new_settings:
+                self._relay.set_bus_choice(self._settings.get("dbus_bus", "system"))
+            if "relay_channel" in new_settings:
+                self._relay.reconfigure(self._settings.get("relay_channel", ""))
+            if "output_mode" in new_settings:
+                new_mode = self._normalize_output_mode(self._settings.get("output_mode"))
+                if new_mode != self._output_mode:
+                    self._output_mode = new_mode
+                    self._apply_output_configuration()
+            elif "relay_channel" in new_settings or "dbus_bus" in new_settings:
+                if self._output_mode == "relay":
+                    self._apply_output_configuration()
             self._status.target_voltage = float(self._settings["target_voltage"])
             self._status.hysteresis = float(self._settings["hysteresis"])
             self._status.activation_delay_seconds = float(
@@ -1604,6 +1886,14 @@ class DPlusController:
             )
             self._status.force_on_configured = bool(self._settings["force_on"])
             self._status.force_off_configured = bool(self._settings.get("force_off", False))
+            self._status.output_mode = self._output_mode
+            self._status.output_target = getattr(
+                self._output_controller, "description", self._status.output_target
+            )
+            self._status.relay_channel = (
+                self._relay.channel if self._output_mode == "relay" else ""
+            )
+            self._status.gpio_state = self._output_controller.read()
             self._evaluate_locked()
             await self._notify_status_locked()
             return self.get_status()
@@ -1618,6 +1908,7 @@ class DPlusController:
     async def shutdown(self) -> None:
         await self.stop()
         self._gpio.close()
+        self._relay.close()
         self._ignition_input.close()
 
     def get_settings(self) -> Dict[str, Any]:
@@ -1749,12 +2040,29 @@ class DPlusController:
         )
         if switch_state["changed"]:
             self._logger.info(
-                "GPIO-Status wechselt zu %s (Spannung %.3f V)",
+                "Ausgang (%s) wechselt zu %s (Spannung %.3f V)",
+                self._status.output_mode,
                 switch_state["state"],
                 self._voltage,
             )
-        self._gpio.write(switch_state["state"])
-        self._status.gpio_state = self._gpio.read()
+        try:
+            self._output_controller.write(switch_state["state"])
+        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+            self._logger.warning(
+                "Konnte Ausgang im Modus %s nicht schalten: %s",
+                self._status.output_mode,
+                exc,
+            )
+        if self._output_controller is self._relay:
+            with contextlib.suppress(Exception):
+                self._gpio.write(False)
+        else:
+            with contextlib.suppress(Exception):
+                self._relay.write(False)
+        self._status.gpio_state = self._output_controller.read()
+        self._status.output_target = getattr(
+            self._output_controller, "description", self._status.output_target
+        )
         self._status.voltage = self._voltage
         self._status.pending_state = switch_state["pending_state"]
         self._status.deadline = switch_state["deadline"] or 0.0
