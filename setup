@@ -320,6 +320,12 @@ source_helper_resources() {
     fi
 
     if [[ -d "${candidate}" ]]; then
+      if [[ -r "${candidate}/forSetupScript" ]]; then
+        # shellcheck disable=SC1090
+        source "${candidate}/forSetupScript"
+        return
+      fi
+
       if [[ -r "${candidate}/IncludeHelpers" ]]; then
         # shellcheck disable=SC1090
         source "${candidate}/IncludeHelpers"
