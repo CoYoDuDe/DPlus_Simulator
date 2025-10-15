@@ -168,17 +168,22 @@ MbPage {
                 }
         }
 
+        function clearRelayFunction(channel) {
+                if (!channel || !channel.length)
+                        return
+                writeFunctionValue(relayFunctionPath(channel), root.relayFunctionNeutral)
+                if (root.relayFunctionRestoreValues[channel] !== undefined)
+                        delete root.relayFunctionRestoreValues[channel]
+        }
+
         function ensureExclusiveRelayFunction(activeChannel) {
-                var restoreTargets = []
                 for (var channel in root.relayFunctionRestoreValues) {
                         if (!root.relayFunctionRestoreValues.hasOwnProperty(channel))
                                 continue
                         if (channel === activeChannel)
                                 continue
-                        restoreTargets.push(channel)
+                        clearRelayFunction(channel)
                 }
-                for (var iRestore = 0; iRestore < restoreTargets.length; ++iRestore)
-                        restoreRelayFunction(restoreTargets[iRestore], true)
                 for (var i = 0; i < relayModel.count; ++i) {
                         var entry = relayModel.get(i)
                         if (!entry)
@@ -193,7 +198,7 @@ MbPage {
                         else
                                 current = readFunctionValue(path)
                         if (current === root.relayFunctionTag)
-                                writeFunctionValue(path, root.relayFunctionNeutral)
+                                clearRelayFunction(candidate)
                 }
         }
 
@@ -216,7 +221,10 @@ MbPage {
 
         function updateRelayFunctionSelection(channel) {
                 var normalized = channel ? channel.toString() : ""
+                var previous = root.lastTaggedRelay
                 if (normalized && normalized.length) {
+                        if (previous && previous.length && previous !== normalized)
+                                clearRelayFunction(previous)
                         cacheRelayFunction(normalized)
                         ensureExclusiveRelayFunction(normalized)
                         updateMosfetFunctionTag(false)
@@ -224,9 +232,13 @@ MbPage {
                         writeFunctionValue(relayFunctionPath(normalized), root.relayFunctionTag)
                         root.lastTaggedRelay = normalized
                 } else {
+                        if (previous && previous.length)
+                                clearRelayFunction(previous)
                         ensureExclusiveRelayFunction("")
                         updateMosfetFunctionTag(true)
                         root.lastTaggedRelay = ""
+                        if (relaySelector.item && relaySelector.item.value && relaySelector.item.value.length)
+                                relaySelector.item.setValue("")
                         ensureOutputModeValue("gpio")
                 }
         }
@@ -271,7 +283,8 @@ MbPage {
                         id: relaySelector
                         description: qsTr("Relay-Kanal")
                         bind: settingsPath("/RelayChannel")
-                        possibleValues: relayOptions.length ? relayOptions : [
+                        possibleValues: relayOptions.length ?
+                                ([{ description: qsTr("Kein Relais (GPIO nutzen)"), value: "" }].concat(relayOptions)) : [
                                 MbOption { description: qsTr("Keine Relays gefunden"); value: "" }
                         ]
                         show: relayOptions.length > 0
