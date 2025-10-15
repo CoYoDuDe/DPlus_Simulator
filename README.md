@@ -5,7 +5,7 @@ Der DPlus Simulator stellt eine Software-Komponente bereit, mit der die D+-Signa
 
 ## Funktionsumfang
 - Simulation des D+-Signals über konfigurierbare Ansteuerung des Ausgangstreibers.
-- Wahlweise Schaltung eines lokalen GPIO-Pins oder eines über gpiosetup registrierten Relais.
+- Wahlweise Schaltung eines lokalen GPIO-Pins oder – bei aktivem gpiosetup/guimods – eines dort registrierten Relais.
 - Frei definierbare Ein- und Ausschaltbedingungen inklusive optionaler Hysterese und Verzögerungen.
 - Verwaltung der Einstellungen über das Victron `com.victronenergy.settings`-Objekt.
 - Direkte Registrierung der Einstellungswerte über das Victron `SettingsDevice`, inklusive Live-Synchronisation mit dem Dienst.
@@ -37,6 +37,10 @@ Die wichtigsten Schlüssel im Gerätekontext `Settings/Devices/DPlusSim` sind:
 | `VoltagePath` | Objektpfad des Spannungswertes innerhalb des Dienstes. |
 
 Alle Werte lassen sich über den DBus-Explorer oder per `dbus-spy` anpassen. Änderungen werden sofort vom Dienst übernommen und – dank `SettingsDevice` – dauerhaft im `com.victronenergy.settings`-Baum hinterlegt.
+
+### Abhängigkeiten der Ausgangsmodi
+- **MOSFET-/GPIO-Modus (`OutputMode=gpio`)**: Funktioniert ohne weitere Zusatzpakete, solange der konfigurierte GPIO frei ist.
+- **Relais-Modus (`OutputMode=relay`)**: Setzt voraus, dass die Zusatzpakete `gpiosetup` und `guimods` installiert und aktiv sind. Nur dann steht die Relaisverwaltung über `Settings/Relays/...` zur Verfügung. Sobald kein Relais zugewiesen ist oder gpiosetup nicht verfügbar ist, schaltet der Simulator automatisch auf den MOSFET-/GPIO-Modus zurück.
 
 ### Statusinformationen
 Der bereitgestellte DBus-Service `com.coyodude.dplussim` publiziert neben dem bisherigen Status zusätzliche Informationen:
