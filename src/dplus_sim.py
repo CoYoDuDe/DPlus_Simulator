@@ -23,7 +23,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Dict, Optional, Set, Tuple
+from typing import Any, Awaitable, Callable, Dict, Iterable, Mapping, Optional, Set, Tuple
 
 try:  # pragma: no-cover - optionale Abhängigkeiten
     from dbus_next import BusType, Message, Variant
@@ -817,26 +817,31 @@ class RelayFunctionMonitor:
             return
         loop.create_task(self._update_unique_sender())
 
+def _dbusify_sequence(sequence: Iterable[Any]) -> list[Variant]:
+    return [Variant(_variant_signature(item), _dbusify_value(item)) for item in sequence]
+
+
+def _dbusify_mapping(mapping: Mapping[Any, Any]) -> Dict[str, Variant]:
+    return {
+        str(key): Variant(_variant_signature(value), _dbusify_value(value))
+        for key, value in mapping.items()
+    }
+
+
 def _dbusify_value(value: Any) -> Any:
     if Variant is None:  # type: ignore[truthy-bool]
         return value
     if isinstance(value, dict):
-        return {
-            str(key): Variant(_variant_signature(inner), _dbusify_value(inner))
-            for key, inner in value.items()
-        }
+        return _dbusify_mapping(value)
     if isinstance(value, (list, tuple)):
-        return [Variant(_variant_signature(item), _dbusify_value(item)) for item in value]
+        return _dbusify_sequence(value)
     return value
 
 
 def dbusify(data: Dict[str, Any]) -> Dict[str, Any]:
     if Variant is None:  # type: ignore[truthy-bool]
         return data
-    return {
-        key: Variant(_variant_signature(value), _dbusify_value(value))
-        for key, value in data.items()
-    }
+    return _dbusify_mapping(data)
 
 
 def normalize_variant_dict(data: Dict[str, Any]) -> Dict[str, Any]:
