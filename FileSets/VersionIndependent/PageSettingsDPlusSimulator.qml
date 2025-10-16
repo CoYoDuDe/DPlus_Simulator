@@ -503,13 +503,15 @@ MbPage {
                 }
 
                 MbEditBox {
-                        description: qsTr("Statusintervall [ms]")
+                        description: qsTr("Statusintervall [s]")
                         item.bind: settingsPath("/StatusPublishInterval")
-                        inputMethodHints: Qt.ImhDigitsOnly
-                        maximumLength: 5
+                        inputMethodHints: Qt.ImhFormattedNumbersOnly
+                        maximumLength: 6
                         onEditDone: {
-                                var v = parseInt(newValue)
+                                var v = parseFloat(newValue)
                                 if (!isNaN(v)) {
+                                        if (v < 0.2)
+                                                v = 0.2
                                         item.setValue(v)
                                 }
                         }
