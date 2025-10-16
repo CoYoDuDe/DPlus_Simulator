@@ -116,16 +116,21 @@ def normalize_relay_channel(channel: str) -> str:
         return ""
     text = text.replace("\\", "/")
     text = text.strip("/")
+    prefixes = [
+        "com.victronenergy.system/",
+        "settings/relays/",
+        "relays/",
+        "relay/",
+    ]
+    while text:
+        lowered = text.lower()
+        for prefix in prefixes:
+            if lowered.startswith(prefix):
+                text = text[len(prefix) :]
+                break
+        else:
+            break
     lowered = text.lower()
-    if lowered.startswith("relay/"):
-        text = text[6:]
-        lowered = text.lower()
-    if lowered.startswith("com.victronenergy.system/"):
-        text = text[len("com.victronenergy.system/") :]
-        lowered = text.lower()
-    if lowered.startswith("relay/"):
-        text = text[6:]
-        lowered = text.lower()
     if lowered.endswith("/state"):
         text = text[: -len("/state")]
     return text
