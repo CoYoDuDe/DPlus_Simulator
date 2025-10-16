@@ -543,7 +543,7 @@ def _variant_signature(value: Any) -> str:
         return "s"
     if isinstance(value, dict):
         return "a{sv}"
-    if isinstance(value, list):
+    if isinstance(value, (list, tuple)):
         return "av"
     raise TypeError(f"Unsupported value for Variant: {value!r}")
 
@@ -817,10 +817,26 @@ class RelayFunctionMonitor:
             return
         loop.create_task(self._update_unique_sender())
 
+def _dbusify_value(value: Any) -> Any:
+    if Variant is None:  # type: ignore[truthy-bool]
+        return value
+    if isinstance(value, dict):
+        return {
+            str(key): Variant(_variant_signature(inner), _dbusify_value(inner))
+            for key, inner in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [Variant(_variant_signature(item), _dbusify_value(item)) for item in value]
+    return value
+
+
 def dbusify(data: Dict[str, Any]) -> Dict[str, Any]:
     if Variant is None:  # type: ignore[truthy-bool]
         return data
-    return {key: Variant(_variant_signature(value), value) for key, value in data.items()}
+    return {
+        key: Variant(_variant_signature(value), _dbusify_value(value))
+        for key, value in data.items()
+    }
 
 
 def normalize_variant_dict(data: Dict[str, Any]) -> Dict[str, Any]:
