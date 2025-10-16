@@ -1697,10 +1697,6 @@ class SwitchLogic:
     def _compute_thresholds(self) -> Tuple[float, float]:
         upper = float(self.on_threshold)
         lower = float(self.off_threshold)
-        if self.hysteresis > 0:
-            half = self.hysteresis / 2.0
-            upper += half
-            lower -= half
         if upper < lower:
             midpoint = (upper + lower) / 2.0
             upper = midpoint
