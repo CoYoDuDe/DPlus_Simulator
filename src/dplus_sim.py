@@ -1068,6 +1068,11 @@ class SettingsBridge:
         if type_code in {"d", "f"}:
             return float(value)
         if type_code == "b":
+            if isinstance(value, str):
+                normalized = value.strip().lower()
+                return normalized not in {"", "0", "false", "off"}
+            if isinstance(value, (int, float)):
+                return value != 0
             return bool(value)
         return str(value)
 
@@ -1341,6 +1346,11 @@ class VelibSettingsAdapter(BaseSettingsAdapter):
         if type_code in {"d", "f"}:
             return float(value)
         if type_code == "b":
+            if isinstance(value, str):
+                normalized = value.strip().lower()
+                return normalized not in {"", "0", "false", "off"}
+            if isinstance(value, (int, float)):
+                return value != 0
             return bool(value)
         return str(value)
 
