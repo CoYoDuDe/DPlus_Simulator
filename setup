@@ -464,6 +464,34 @@ register_dbus_settings() {
   fi
 
   if declare -F addAllDbusSettings >/dev/null; then
+    local helper_list_backup=""
+    local helper_list_created=false
+
+    if [[ ${#_dbus_settings_entries[@]} -gt 0 ]]; then
+      if [[ -f "${helper_json_file}" ]]; then
+        helper_list_backup="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.backup.XXXXXX")"
+        cp -f "${helper_json_file}" "${helper_list_backup}"
+      fi
+      printf '%s\n' "${_dbus_settings_entries[@]}" > "${helper_json_file}"
+      helper_list_created=true
+    fi
+
+    if call_helper_function_if_available addAllDbusSettings; then
+      dbusSettingsUpdated=true
+      if [[ -n "${helper_list_backup}" ]]; then
+        mv -f "${helper_list_backup}" "${helper_json_file}"
+      elif [[ "${helper_list_created}" == true ]]; then
+        rm -f "${helper_json_file}"
+      fi
+      return
+    fi
+
+    if [[ -n "${helper_list_backup}" ]]; then
+      mv -f "${helper_list_backup}" "${helper_json_file}"
+    elif [[ "${helper_list_created}" == true ]]; then
+      rm -f "${helper_json_file}"
+    fi
+
     local settings_list_output=""
     if declare -F DbusSettingsList >/dev/null; then
       set +e
@@ -516,6 +544,35 @@ unregister_dbus_settings() {
   fi
 
   if declare -F removeDbusSettings >/dev/null; then
+    local helper_json_file="${PROJECT_ROOT}/DbusSettingsList"
+    local helper_list_backup=""
+    local helper_list_created=false
+
+    if [[ ${#_dbus_settings_entries[@]} -gt 0 ]]; then
+      if [[ -f "${helper_json_file}" ]]; then
+        helper_list_backup="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.backup.XXXXXX")"
+        cp -f "${helper_json_file}" "${helper_list_backup}"
+      fi
+      printf '%s\n' "${_dbus_settings_entries[@]}" > "${helper_json_file}"
+      helper_list_created=true
+    fi
+
+    if call_helper_function_if_available removeDbusSettings; then
+      dbusSettingsUpdated=true
+      if [[ -n "${helper_list_backup}" ]]; then
+        mv -f "${helper_list_backup}" "${helper_json_file}"
+      elif [[ "${helper_list_created}" == true ]]; then
+        rm -f "${helper_json_file}"
+      fi
+      return
+    fi
+
+    if [[ -n "${helper_list_backup}" ]]; then
+      mv -f "${helper_list_backup}" "${helper_json_file}"
+    elif [[ "${helper_list_created}" == true ]]; then
+      rm -f "${helper_json_file}"
+    fi
+
     local settings_list_output=""
     if declare -F DbusSettingsList >/dev/null; then
       set +e
