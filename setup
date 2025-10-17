@@ -15,6 +15,7 @@ filesUpdated=false
 servicesUpdated=false
 dbusSettingsUpdated=false
 declare -a _dbus_settings_entries=()
+_dbus_settings_json=""
 
 log() {
   local level="${1^^}"
@@ -405,11 +406,57 @@ build_dbus_settings_entries() {
     die "settingsList ${list_path} nicht gefunden"
   fi
   mapfile -t _dbus_settings_entries < "${list_path}"
+
+  local trimmed_entries=()
+  local entry=""
+  for entry in "${_dbus_settings_entries[@]}"; do
+    local trimmed="${entry}"
+    trimmed="${trimmed#${trimmed%%[![:space:]]*}}"
+    trimmed="${trimmed%${trimmed##*[![:space:]]}}"
+    if [[ -n "${trimmed}" ]]; then
+      trimmed_entries+=("${trimmed}")
+    fi
+  done
+  _dbus_settings_entries=("${trimmed_entries[@]}")
+
+  local json_payload="["
+  local first=true
+  for entry in "${_dbus_settings_entries[@]}"; do
+    if [[ "${first}" == true ]]; then
+      json_payload+="${entry}"
+      first=false
+    else
+      json_payload+=",${entry}"
+    fi
+  done
+  json_payload+="]"
+  _dbus_settings_json="${json_payload}"
 }
 
 register_dbus_settings() {
   local list_path="${PROJECT_ROOT}/settingsList"
+  local helper_json_file="${PROJECT_ROOT}/DbusSettingsList"
+  local temp_json_file=""
   build_dbus_settings_entries "${list_path}"
+
+  if [[ -f "${helper_json_file}" ]]; then
+    if call_helper_function_if_available addAllDbusSettingsFromFile "${helper_json_file}"; then
+      dbusSettingsUpdated=true
+      return
+    fi
+  elif [[ -n "${_dbus_settings_json}" ]]; then
+    temp_json_file="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.XXXXXX.json")"
+    printf '%s\n' "${_dbus_settings_json}" > "${temp_json_file}"
+    if call_helper_function_if_available addAllDbusSettingsFromFile "${temp_json_file}"; then
+      dbusSettingsUpdated=true
+      rm -f "${temp_json_file}"
+      return
+    fi
+  fi
+
+  if [[ -n "${temp_json_file}" ]]; then
+    rm -f "${temp_json_file}"
+  fi
 
   if call_helper_function_if_available addAllDbusSettingsFromFile "${list_path}"; then
     dbusSettingsUpdated=true
@@ -428,6 +475,13 @@ register_dbus_settings() {
           dbusSettingsUpdated=true
           return
         }
+      fi
+    fi
+
+    if [[ -n "${_dbus_settings_json}" ]]; then
+      if call_helper_function_if_available addAllDbusSettings "${_dbus_settings_json}"; then
+        dbusSettingsUpdated=true
+        return
       fi
     fi
 
@@ -782,4 +836,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ -z "${DPLUS_SIMULATOR_SKIP_MAIN:-}" ]]; then
+  main "$@"
+fi
