@@ -543,8 +543,9 @@ unregister_dbus_settings() {
     return
   fi
 
-  if declare -F removeDbusSettings >/dev/null; then
-    local helper_json_file="${PROJECT_ROOT}/DbusSettingsList"
+  local helper_json_file="${PROJECT_ROOT}/DbusSettingsList"
+
+  if declare -F removeAllDbusSettings >/dev/null; then
     local helper_list_backup=""
     local helper_list_created=false
 
@@ -557,7 +558,7 @@ unregister_dbus_settings() {
       helper_list_created=true
     fi
 
-    if call_helper_function_if_available removeDbusSettings; then
+    if call_helper_function_if_available removeAllDbusSettings; then
       dbusSettingsUpdated=true
       if [[ -n "${helper_list_backup}" ]]; then
         mv -f "${helper_list_backup}" "${helper_json_file}"
@@ -572,7 +573,9 @@ unregister_dbus_settings() {
     elif [[ "${helper_list_created}" == true ]]; then
       rm -f "${helper_json_file}"
     fi
+  fi
 
+  if declare -F removeDbusSettings >/dev/null; then
     local settings_list_output=""
     if declare -F DbusSettingsList >/dev/null; then
       set +e
