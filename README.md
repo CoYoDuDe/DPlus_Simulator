@@ -73,6 +73,12 @@ Damit lassen sich die Entscheidungen des Reglers transparent nachverfolgen.
 - Beobachten Sie das PackageManager-Log (`/var/log/PackageManager.log`), um Installations- und Update-Ereignisse zu verfolgen.
 - Zusätzliche Laufzeitinformationen werden über das Python-Logging der Anwendung (`setup_logging` in `src/dplus_sim.py`) auf den Standardausgang geschrieben. Das zugehörige Log-Skript (`services/com.coyodude.dplussim/log/run`) leitet diese Ausgaben auf Zielsystemen wahlweise an den SetupHelper-Logpipe (`/data/SetupHelper/HelperResources/serviceLogPipe`) weiter oder – falls dieser nicht verfügbar ist – per `svlogd -tt` in das runit-Logverzeichnis des Dienstes (z. B. `/var/log/com.coyodude.dplussim/`). Verwenden Sie daher den SetupHelper-Logviewer bzw. lesen Sie die `current`-Datei im runit-Logordner, um Laufzeitereignisse nachzuverfolgen.
 
+## Debug-Modus und Simulationstools
+- Im regulären Betrieb stehen ausschließlich produktionsrelevante Funktionen zur Verfügung. Debug-Features müssen explizit per Kommandozeilenparameter `--enable-debug` freigeschaltet werden.
+- Die DBus-Methode `InjectVoltageSample` liefert ohne aktivierten Debug-Modus einen Fehler zurück und kann somit nicht versehentlich in Produktionsumgebungen genutzt werden.
+- Die Waveform-Simulation über `--simulate-waveform` ist ausschließlich im Debug-Modus verfügbar. Wird die Option ohne `--enable-debug` verwendet, bricht der Dienst mit einer entsprechenden Fehlermeldung ab.
+- Der Debug-Modus ist für Test- und Entwicklungsszenarien gedacht und sollte auf Produktivsystemen deaktiviert bleiben.
+
 ## Troubleshooting
 | Problem | Mögliche Ursache | Lösung |
 |---------|------------------|--------|

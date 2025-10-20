@@ -2593,11 +2593,14 @@ class DPlusSimService(ServiceInterface):
         controller: DPlusController,
         shutdown_callback: Callable[[], None],
         settings_persist: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+        *,
+        debug_enabled: bool = False,
     ) -> None:
         super().__init__("com.coyodude.dplussim")
         self._controller = controller
         self._shutdown_callback = shutdown_callback
         self._persist_settings = settings_persist
+        self._debug_enabled = bool(debug_enabled)
 
     @method()
     async def Start(self) -> bool:
@@ -2625,6 +2628,14 @@ class DPlusSimService(ServiceInterface):
 
     @method()
     async def InjectVoltageSample(self, voltage: "d") -> "a{sv}":  # type: ignore[override]
+        if not self._debug_enabled:
+            logging.getLogger("DPlusSimService").error(
+                "InjectVoltageSample wurde ohne Debug-Modus angefordert"
+            )
+            raise RuntimeError(
+                "InjectVoltageSample ist nur im Debug-Modus verfügbar. "
+                "Starten Sie den Dienst mit --enable-debug."
+            )
         result = await self._controller.inject_voltage(float(voltage))
         return dbusify(result)
 
@@ -2682,6 +2693,7 @@ def resolve_bus_configuration(bus_value: Any) -> Tuple[str, Optional[Any]]:
 
 
 async def run_async(args: argparse.Namespace) -> None:
+    debug_enabled = bool(getattr(args, "enable_debug", False))
     merged_settings = DEFAULT_SETTINGS.copy()
     if args.bus:
         merged_settings["dbus_bus"] = args.bus
@@ -2999,7 +3011,12 @@ async def run_async(args: argparse.Namespace) -> None:
                 else BusType.SESSION
             )
             bus = await MessageBus(bus_type=bus_type).connect()
-            service = DPlusSimService(controller, request_shutdown, persist_settings)
+            service = DPlusSimService(
+                controller,
+                request_shutdown,
+                persist_settings,
+                debug_enabled=debug_enabled,
+            )
             controller.set_status_callback(service.emit_status)
             bus.export("/com/coyodude/dplussim", service)
             await bus.request_name("com.coyodude.dplussim")
@@ -3016,7 +3033,7 @@ async def run_async(args: argparse.Namespace) -> None:
         controller.set_status_callback(lambda _status: None)
 
     waveform_task: Optional[asyncio.Task[None]] = None
-    if args.simulate_waveform and not shutdown_event.is_set():
+    if debug_enabled and getattr(args, "simulate_waveform", 0.0) and not shutdown_event.is_set():
         waveform_task = asyncio.create_task(simulate_waveform(controller, args.simulate_waveform))
 
     try:
@@ -3112,6 +3129,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--no-dbus", action="store_true", help="D-Bus-Registrierung deaktivieren, auch wenn verfügbar"
     )
     parser.add_argument(
+        "--enable-debug",
+        action="store_true",
+        help="Schaltet Debug-Funktionen frei (nicht im Produktivbetrieb verwenden)",
+    )
+    parser.add_argument(
         "--simulate-waveform",
         type=float,
         default=0.0,
@@ -3126,9 +3148,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def validate_runtime_options(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    debug_enabled = bool(getattr(args, "enable_debug", False))
+    amplitude = float(getattr(args, "simulate_waveform", 0.0) or 0.0)
+    if amplitude > 0.0 and not debug_enabled:
+        parser.error("--simulate-waveform ist nur gemeinsam mit --enable-debug zulässig")
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = build_arg_parser()
     args = parser.parse_args(argv)
+    validate_runtime_options(args, parser)
     setup_logging(args.log_level)
     try:
         asyncio.run(run_async(args))
