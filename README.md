@@ -43,6 +43,13 @@ Die wichtigsten Schlüssel im Gerätekontext `Settings/Devices/DPlusSim` sind:
 | `ServicePath` | Automatisch erkannter Dienst für die Starterspannung (schreibgeschützt). |
 | `VoltagePath` | Schreibgeschützter Starterspannungs-Pfad (`/StarterVoltage`). |
 
+Auf GX-Geräten steht auf der Einstellungsseite des D+-Simulators eine Auswahl aller
+gefundenen Dienste mit Starterspannung zur Verfügung. Wird ein Eintrag ausgewählt, setzt
+die Oberfläche `DbusBus`, `ServicePath` und `VoltagePath` automatisch auf die
+Standardwerte des Dienstes. Die Eingabefelder bleiben weiterhin editierbar, sodass eigene
+Pfade möglich sind. Erkennt das System keinen Dienst mit `/StarterVoltage`, zeigt die
+Seite einen Hinweis an und fordert zur manuellen Eingabe auf.
+
 Alle Werte lassen sich über den DBus-Explorer oder per `dbus-spy` anpassen. Änderungen werden sofort vom Dienst übernommen und – dank `SettingsDevice` – dauerhaft im `com.victronenergy.settings`-Baum hinterlegt.
 
 Der Simulator prüft beim Start zuerst `com.victronenergy.system` auf das Vorhandensein von `/StarterVoltage`. Ist dort kein Wert verfügbar, werden alle `com.victronenergy.battery.*`-Dienste durchsucht. Der erste Dienst mit gültiger Starterspannung wird übernommen; schlägt die Suche fehl, meldet der Dienst einen Fehlerzustand und stoppt.
