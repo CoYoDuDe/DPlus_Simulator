@@ -409,16 +409,30 @@ async def resolve_starter_voltage_service(bus_choice: str) -> VoltageServiceInfo
                 exc,
             )
         else:
-            if value is not None:
-                logger.info(
-                    "Starterspannung über %s gefunden",
+            if value is None:
+                logger.debug(
+                    "StarterVoltage bei %s ist nicht verfügbar",
                     SYSTEM_SERVICE_NAME,
                 )
-                return VoltageServiceInfo(
-                    service_name=SYSTEM_SERVICE_NAME,
-                    object_path=STARTER_VOLTAGE_PATH,
-                    bus_choice=bus_choice_normalized,
-                )
+            else:
+                try:
+                    float(value)
+                except (TypeError, ValueError):
+                    logger.debug(
+                        "StarterVoltage bei %s liefert keinen numerischen Wert: %r",
+                        SYSTEM_SERVICE_NAME,
+                        value,
+                    )
+                else:
+                    logger.info(
+                        "Starterspannung über %s gefunden",
+                        SYSTEM_SERVICE_NAME,
+                    )
+                    return VoltageServiceInfo(
+                        service_name=SYSTEM_SERVICE_NAME,
+                        object_path=STARTER_VOLTAGE_PATH,
+                        bus_choice=bus_choice_normalized,
+                    )
 
         names = await _list_dbus_names(bus)
         candidates = [name for name in names if name.startswith(BATTERY_SERVICE_PREFIX)]
@@ -435,6 +449,15 @@ async def resolve_starter_voltage_service(bus_choice: str) -> VoltageServiceInfo
                 continue
             if value is None:
                 logger.debug("StarterVoltage bei %s ist nicht verfügbar", candidate)
+                continue
+            try:
+                float(value)
+            except (TypeError, ValueError):
+                logger.debug(
+                    "StarterVoltage bei %s liefert keinen numerischen Wert: %r",
+                    candidate,
+                    value,
+                )
                 continue
             logger.info("Starterspannung über %s gefunden", candidate)
             return VoltageServiceInfo(
