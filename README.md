@@ -17,10 +17,11 @@ Der DPlus Simulator stellt eine Software-Komponente bereit, mit der die D+-Signa
 ## Installation
 Die Installation erfolgt über den SetupHelper in Kombination mit dem Victron PackageManager:
 
-> **Wichtig:** Der Dienst startet nur, wenn eine funktionierende Verbindung zur konfigurierten
-> BMV712- bzw. Victron-D-Bus-Spannungsquelle hergestellt werden kann. Fehlende oder falsche
-> `ServicePath`-/`VoltagePath`-Einstellungen sowie Verbindungsfehler führen zu einem kontrollierten
-> Shutdown, damit kein simuliertes D+-Signal ohne reale Spannungsdaten erzeugt wird.
+> **Wichtig:** Der Dienst startet nur, wenn auf dem gewählten D-Bus ein Victron BMV712
+> gefunden wird. Der zugehörige D-Bus-Service und der Spannungspfad werden automatisch
+> ermittelt; Manipulationen an `ServicePath`/`VoltagePath` werden ignoriert. Bei fehlender
+> oder gestörter Verbindung bricht der Dienst kontrolliert ab, damit kein simuliertes
+> D+-Signal ohne reale Spannungsdaten erzeugt wird.
 
 ### Konfigurationspfade
 Die Konfiguration erfolgt über den Victron DBus (Service `com.victronenergy.settings`).
@@ -38,10 +39,12 @@ Die wichtigsten Schlüssel im Gerätekontext `Settings/Devices/DPlusSim` sind:
 | `RelayChannel` | Ausgewählter gpiosetup-Relay-Kanal (z. B. `4brelays/0`), exklusiv vom Simulator belegt. |
 | `ForceOn` / `ForceOff` | Erzwingt dauerhaft ein aktiviertes bzw. deaktiviertes Ausgangssignal. |
 | `StatusPublishInterval` | Aktualisierungsintervall der Statusmeldungen. |
-| `ServicePath` | D-Bus-Service, aus dem die Batteriespannung gelesen wird. |
-| `VoltagePath` | Objektpfad des Spannungswertes innerhalb des Dienstes. |
+| `ServicePath` | Wird automatisch auf den erkannten BMV712-Service gesetzt (schreibgeschützt). |
+| `VoltagePath` | Schreibgeschützter Spannungspfad des automatisch erkannten BMV712. |
 
 Alle Werte lassen sich über den DBus-Explorer oder per `dbus-spy` anpassen. Änderungen werden sofort vom Dienst übernommen und – dank `SettingsDevice` – dauerhaft im `com.victronenergy.settings`-Baum hinterlegt.
+
+Der Simulator sucht beim Start nach einem Victron BMV712 auf dem ausgewählten D-Bus und übernimmt dessen Service- sowie Spannungspfad automatisch. Schlägt die Suche fehl, wird der Dienst beendet und meldet einen entsprechenden Fehlerzustand.
 
 ### Abhängigkeiten der Ausgangsmodi
 - **MOSFET-/GPIO-Modus (`OutputMode=gpio`)**: Funktioniert ohne weitere Zusatzpakete, solange der konfigurierte GPIO frei ist.
@@ -83,6 +86,6 @@ Damit lassen sich die Entscheidungen des Reglers transparent nachverfolgen.
 | Problem | Mögliche Ursache | Lösung |
 |---------|------------------|--------|
 | Simulation startet nicht | Paket nicht installiert oder Dienst nicht aktiv | PackageManager-Log prüfen, Dienst neu starten (`svc -t dplus-simulator`) |
-| Dienst stoppt sofort nach dem Start | Keine stabile Verbindung zur BMV712-Spannungsquelle oder `ServicePath`/`VoltagePath` leer | Verkabelung sowie D-Bus-Konfiguration prüfen; Dienst neu starten, sobald die Quelle erreichbar ist |
+| Dienst stoppt sofort nach dem Start | Kein BMV712 auf dem gewählten D-Bus gefunden oder Verbindung zur Spannungsquelle instabil | Verkabelung und D-Bus prüfen; sicherstellen, dass der BMV712 sichtbar ist und Dienst erneut starten |
 | Kein Ausgangssignal | Falsche Hardware-Verdrahtung oder fehlender Ausgangstreiber | Verkabelung prüfen, Relais/MOSFET auf Funktion testen |
 | Fehlende DBus-Einträge | Service nicht registriert | Systemlog (`journalctl -u dplus-simulator`) prüfen |
