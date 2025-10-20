@@ -2,6 +2,7 @@
 
 import QtQuick 1.1
 import com.victron.velib 1.0
+import QtDBus 1.0
 import "utils.js" as Utils
 
 MbPage {
@@ -15,6 +16,11 @@ MbPage {
         property string mosfetFunctionPath: ""
         property string lastTaggedRelay: ""
         property var relayFunctionRestoreValues: ({})
+        property var starterVoltageServices: []
+        property string starterVoltageSelection: ""
+        property string starterVoltageBus: ""
+        property bool starterVoltageScanFailed: false
+        property bool starterVoltageHasValue: true
         VeQuickItemModel {
                 id: relayModel
                 source: "com.victronenergy.settings/Settings/Relays"
@@ -100,6 +106,186 @@ MbPage {
         Component.onCompleted: {
                 refreshRelayOptions()
                 initializeRelayAssignment()
+                discoverStarterVoltageServices()
+        }
+
+        function destroyObject(obj) {
+                if (obj && obj.destroy)
+                        obj.destroy()
+        }
+
+        function createDbusInterface(busName, service, path, iface) {
+                var enumName = busName === "session" ? "SessionBus" : "SystemBus"
+                try {
+                        return Qt.createQmlObject(
+                                'import QtDBus 1.0; DBusInterface { service: "' +
+                                        service + '"; path: "' + path +
+                                        '"; interface: "' + iface +
+                                        '"; bus: DBus.Connection.' + enumName + ' }',
+                                root
+                        )
+                } catch (error) {
+                        console.warn("DBusInterface konnte nicht erstellt werden:", error)
+                        return null
+                }
+        }
+
+        function listDbusNames(busName) {
+                var iface = createDbusInterface(busName, "org.freedesktop.DBus",
+                                                "/org/freedesktop/DBus",
+                                                "org.freedesktop.DBus")
+                if (!iface)
+                        return []
+                var reply
+                try {
+                        reply = iface.call("ListNames")
+                } catch (error) {
+                        console.warn("org.freedesktop.DBus.ListNames fehlgeschlagen:", error)
+                        destroyObject(iface)
+                        return []
+                }
+                destroyObject(iface)
+                if (!reply)
+                        return []
+                if (reply.length === 1 && reply[0] instanceof Array)
+                        return reply[0]
+                if (reply instanceof Array)
+                        return reply
+                return []
+        }
+
+        function serviceDescription(service, busName, voltage) {
+                var description = service
+                if (service === "com.victronenergy.system")
+                        description = qsTr("Victron Systemdienst (%1)").arg(service)
+                else if (service.indexOf("com.victronenergy.battery.") === 0)
+                        description = qsTr("Batteriedienst (%1)").arg(service)
+                if (voltage !== undefined && voltage !== null && voltage !== "")
+                        description += qsTr(" – aktuelle Spannung: %1 V").arg(voltage)
+                if (busName === "session")
+                        description += qsTr(" [Session]")
+                return description
+        }
+
+        function readStarterVoltage(busName, service, path) {
+                var objectPath = path && path.length ? path : "/StarterVoltage"
+                if (objectPath.charAt(0) !== "/")
+                        objectPath = "/" + objectPath
+                var iface = createDbusInterface(busName, service, objectPath,
+                                                "com.victronenergy.BusItem")
+                if (!iface)
+                        return undefined
+                var value
+                try {
+                        value = iface.call("GetValue")
+                } catch (error) {
+                        console.warn("StarterVoltage konnte nicht gelesen werden von", service, error)
+                        destroyObject(iface)
+                        return undefined
+                }
+                destroyObject(iface)
+                if (value === undefined || value === null)
+                        return undefined
+                if (value.length === 1 && value[0] !== undefined)
+                        return value[0]
+                return value
+        }
+
+        function discoverStarterVoltageServices() {
+                var buses = [
+                        { name: "system", prefix: "com.victronenergy." },
+                        { name: "session", prefix: "com.victronenergy." }
+                ]
+                var options = []
+                starterVoltageScanFailed = false
+                for (var i = 0; i < buses.length; ++i) {
+                        var bus = buses[i]
+                        var names = listDbusNames(bus.name)
+                        if (!names.length)
+                                continue
+                        for (var j = 0; j < names.length; ++j) {
+                                var name = names[j]
+                                if (typeof name !== "string" || name.indexOf(bus.prefix) !== 0)
+                                        continue
+                                if (name.indexOf("com.victronenergy.battery.") !== 0 &&
+                                                name !== "com.victronenergy.system")
+                                        continue
+                                var voltage = readStarterVoltage(bus.name, name, "/StarterVoltage")
+                                if (voltage === undefined)
+                                        continue
+                                options.push({
+                                        description: serviceDescription(name, bus.name, voltage),
+                                        value: name,
+                                        voltage: voltage,
+                                        bus: bus.name
+                                })
+                        }
+                }
+                if (!options.length)
+                        starterVoltageScanFailed = true
+                else
+                        options.sort(function(a, b) { return a.value.localeCompare(b.value) })
+                starterVoltageServices = options
+                updateStarterVoltageSelectionFromSettings()
+        }
+
+        function serviceIsKnown(service) {
+                if (!service || !service.length)
+                        return false
+                for (var i = 0; i < starterVoltageServices.length; ++i) {
+                        var option = starterVoltageServices[i]
+                        if (option && option.value === service)
+                                return true
+                }
+                return false
+        }
+
+        function findStarterVoltageBus(service) {
+                if (serviceIsKnown(service)) {
+                        for (var i = 0; i < starterVoltageServices.length; ++i) {
+                                var option = starterVoltageServices[i]
+                                if (option && option.value === service)
+                                        return option.bus || "system"
+                        }
+                }
+                return starterVoltageBus || "system"
+        }
+
+        function updateStarterVoltageSelectionFromSettings() {
+                if (!servicePathItem || !servicePathItem.item || !voltagePathItem || !voltagePathItem.item)
+                        return
+                var currentService = servicePathItem.item.value
+                var currentBus = (dbusBusItem && dbusBusItem.item) ? dbusBusItem.item.value : ""
+                starterVoltageSelection = currentService ? currentService.toString() : ""
+                starterVoltageBus = currentBus ? currentBus.toString() : ""
+                refreshStarterVoltageValidation()
+        }
+
+        function onStarterVoltageServiceChanged(service, busName) {
+                if (!servicePathItem || !servicePathItem.item || !voltagePathItem || !voltagePathItem.item || !dbusBusItem || !dbusBusItem.item)
+                        return
+                starterVoltageSelection = service
+                starterVoltageBus = busName
+                if (servicePathItem.item.setValue)
+                        servicePathItem.item.setValue(service)
+                if (voltagePathItem.item.setValue)
+                        voltagePathItem.item.setValue("/StarterVoltage")
+                if (dbusBusItem.item.setValue)
+                        dbusBusItem.item.setValue(busName === "session" ? "session" : "system")
+                refreshStarterVoltageValidation()
+        }
+
+        function starterVoltageServiceValid(service, busName) {
+                if (!service || !service.length)
+                        return false
+                var path = (voltagePathItem && voltagePathItem.item && voltagePathItem.item.value) ?
+                        voltagePathItem.item.value.toString() : "/StarterVoltage"
+                var voltage = readStarterVoltage(busName || "system", service, path)
+                return voltage !== undefined
+        }
+
+        function refreshStarterVoltageValidation() {
+                starterVoltageHasValue = starterVoltageServiceValid(starterVoltageSelection, starterVoltageBus)
         }
 
         function initializeRelayAssignment() {
@@ -517,22 +703,113 @@ MbPage {
                         }
                 }
 
+                MbItemText {
+                        text: starterVoltageScanFailed ?
+                                qsTr("Keine Dienste mit /StarterVoltage gefunden. Bitte Pfade manuell eintragen.") :
+                                qsTr("Wähle den Dienst, der /StarterVoltage bereitstellt. Die Felder darunter werden automatisch gefüllt und lassen sich anschließend bei Bedarf anpassen.")
+                        wrapMode: Text.WordWrap
+                }
+
+                MbItemOptions {
+                        id: starterVoltageSelector
+                        description: qsTr("Starterspannungsdienst")
+                        bind: settingsPath("/ServicePath")
+                        possibleValues: {
+                                var values = []
+                                for (var i = 0; i < starterVoltageServices.length; ++i) {
+                                        var entry = starterVoltageServices[i]
+                                        if (!entry)
+                                                continue
+                                        values.push({
+                                                description: entry.description,
+                                                value: entry.value,
+                                                bus: entry.bus || "system",
+                                                voltage: entry.voltage
+                                        })
+                                }
+                                if (!values.length)
+                                        values.push({ description: qsTr("Keine Dienste gefunden"), value: starterVoltageSelection || "" })
+                                return values
+                        }
+                }
+
+                Connections {
+                        target: starterVoltageSelector.item
+                        onValueChanged: {
+                                if (!starterVoltageSelector.item)
+                                        return
+                                var selected = starterVoltageSelector.item.value ? starterVoltageSelector.item.value.toString() : ""
+                                var known = serviceIsKnown(selected)
+                                var busName = known ? findStarterVoltageBus(selected) :
+                                        (dbusBusItem.item && dbusBusItem.item.value ? dbusBusItem.item.value.toString() : "system")
+                                if (known)
+                                        onStarterVoltageServiceChanged(selected, busName)
+                                else {
+                                        starterVoltageSelection = selected
+                                        starterVoltageBus = busName
+                                        refreshStarterVoltageValidation()
+                                }
+                        }
+                }
+
+                MbItemText {
+                        text: qsTr("⚠️ Warnung: Der ausgewählte Dienst liefert keine Starterspannung.")
+                        wrapMode: Text.WordWrap
+                        show: starterVoltageSelection.length > 0 && !starterVoltageHasValue
+                }
+
                 MbEditBox {
+                        id: dbusBusItem
                         description: qsTr("DBus-Bus")
                         item.bind: settingsPath("/DbusBus")
                         maximumLength: 40
+                        onEditDone: {
+                                var value = newValue ? newValue.toString().trim() : ""
+                                if (item && item.setValue)
+                                        item.setValue(value)
+                                updateStarterVoltageSelectionFromSettings()
+                        }
                 }
 
                 MbEditBox {
+                        id: servicePathItem
                         description: qsTr("Service-Pfad")
                         item.bind: settingsPath("/ServicePath")
                         maximumLength: 80
+                        onEditDone: {
+                                var value = newValue ? newValue.toString().trim() : ""
+                                if (item && item.setValue)
+                                        item.setValue(value)
+                                updateStarterVoltageSelectionFromSettings()
+                        }
                 }
 
                 MbEditBox {
+                        id: voltagePathItem
                         description: qsTr("Spannungspfad")
                         item.bind: settingsPath("/VoltagePath")
                         maximumLength: 80
+                        onEditDone: {
+                                var value = newValue ? newValue.toString().trim() : ""
+                                if (item && item.setValue)
+                                        item.setValue(value)
+                                refreshStarterVoltageValidation()
+                        }
+                }
+
+                Connections {
+                        target: servicePathItem.item
+                        onValueChanged: updateStarterVoltageSelectionFromSettings()
+                }
+
+                Connections {
+                        target: dbusBusItem.item
+                        onValueChanged: updateStarterVoltageSelectionFromSettings()
+                }
+
+                Connections {
+                        target: voltagePathItem.item
+                        onValueChanged: refreshStarterVoltageValidation()
                 }
         }
 }
