@@ -9,7 +9,13 @@ from typing import List
 import pytest
 
 import dplus_sim
-from dplus_sim import DEFAULT_SETTINGS, DPlusController, VoltageSourceError
+from dplus_sim import (
+    Bmv712DetectionError,
+    Bmv712ServiceInfo,
+    DEFAULT_SETTINGS,
+    DPlusController,
+    VoltageSourceError,
+)
 
 
 def test_controller_initial_state_unavailable() -> None:
@@ -235,6 +241,17 @@ def test_run_async_aborts_on_voltage_reader_failure(
         monkeypatch.setattr(dplus_sim, "SettingsBridge", DummySettingsBridge)
         monkeypatch.setattr(dplus_sim, "DbusNextSettingsAdapter", DummyDbusSettingsAdapter)
 
+        async def fake_resolver(bus_choice: str) -> Bmv712ServiceInfo:
+            return Bmv712ServiceInfo(
+                service_name="com.victronenergy.battery.fake",
+                object_path="/Dc/0/Voltage",
+                bus_choice=bus_choice,
+                product_id=0xA381,
+                product_name="BMV-712 Smart",
+            )
+
+        monkeypatch.setattr(dplus_sim, "resolve_bmv712_service", fake_resolver)
+
         args = argparse.Namespace(
             bus=None,
             no_dbus=False,
@@ -251,6 +268,132 @@ def test_run_async_aborts_on_voltage_reader_failure(
         assert any(state["voltage_source_state"] == "error" for state in states)
         assert any(
             "Initiale Verbindung zur Spannungsquelle fehlgeschlagen" in record.getMessage()
+            for record in caplog.records
+        )
+
+    asyncio.run(scenario())
+
+
+def test_run_async_aborts_when_bmv712_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def scenario() -> None:
+        created: List[DPlusController] = []
+
+        original_controller = dplus_sim.DPlusController
+
+        class TrackingController(original_controller):  # type: ignore[misc]
+            def __init__(self, *args, **kwargs) -> None:  # type: ignore[no-untyped-def]
+                super().__init__(*args, **kwargs)
+                created.append(self)
+                self.recorded_states: List[dict[str, object]] = []
+
+            async def set_voltage_provider(  # type: ignore[override]
+                self,
+                provider,
+                source_label=None,
+                *,
+                source_info=None,
+            ) -> None:
+                await super().set_voltage_provider(provider, source_label, source_info=source_info)
+                self.recorded_states.append(self.get_status())
+
+        monkeypatch.setattr(dplus_sim, "DPlusController", TrackingController)
+
+        class DummyMessageBus:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            async def connect(self) -> "DummyMessageBus":
+                return self
+
+            def add_message_handler(self, _handler) -> None:
+                return None
+
+            def remove_message_handler(self, _handler) -> None:
+                return None
+
+            async def call(self, *args, **kwargs):
+                class _Reply:
+                    body: list[object] = []
+                    message_type = 1
+
+                return _Reply()
+
+            def export(self, *args, **kwargs) -> None:
+                return None
+
+            async def request_name(self, *args, **kwargs) -> None:
+                return None
+
+            def disconnect(self) -> None:
+                return None
+
+            async def wait_for_disconnect(self) -> None:
+                return None
+
+        class DummySettingsBridge:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            async def start(self) -> dict[str, object]:
+                return {}
+
+            async def write_settings(self, _updates) -> None:
+                return None
+
+            async def stop(self) -> None:
+                return None
+
+            def set_callback(self, _callback) -> None:
+                return None
+
+        class DummyDbusSettingsAdapter:
+            def __init__(self, bridge) -> None:
+                self._bridge = bridge
+
+            async def start(self) -> dict[str, object]:
+                return await self._bridge.start()
+
+            async def apply(self, _updates) -> None:
+                return None
+
+            async def stop(self) -> None:
+                return None
+
+            def set_callback(self, _callback) -> None:
+                return None
+
+        monkeypatch.setattr(dplus_sim, "BusType", types.SimpleNamespace(SYSTEM="system", SESSION="session"))
+        monkeypatch.setattr(dplus_sim, "Message", object)
+        monkeypatch.setattr(dplus_sim, "MessageType", types.SimpleNamespace(METHOD_RETURN=1))
+        monkeypatch.setattr(dplus_sim, "MessageBus", DummyMessageBus)
+        monkeypatch.setattr(dplus_sim, "SettingsBridge", DummySettingsBridge)
+        monkeypatch.setattr(dplus_sim, "DbusNextSettingsAdapter", DummyDbusSettingsAdapter)
+
+        async def failing_resolver(_bus_choice: str) -> Bmv712ServiceInfo:
+            raise Bmv712DetectionError("kein Gerät gefunden")
+
+        monkeypatch.setattr(dplus_sim, "resolve_bmv712_service", failing_resolver)
+
+        args = argparse.Namespace(
+            bus=None,
+            no_dbus=False,
+            dry_run=True,
+            simulate_waveform=0.0,
+            log_level="INFO",
+        )
+
+        caplog.set_level(logging.ERROR, logger="DPlusSim")
+
+        await dplus_sim.run_async(args)
+
+        assert created, "Controller wurde nicht erzeugt"
+        states = created[0].recorded_states
+        assert any(state["voltage_source_state"] == "not-found" for state in states)
+        assert any(
+            "BMV712-Dienst konnte nicht gefunden werden" in record.getMessage()
             for record in caplog.records
         )
 

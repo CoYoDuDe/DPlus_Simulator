@@ -97,11 +97,13 @@
     },
     "service_path": {
       "type": "string",
-      "description": "D-Bus-Service, aus dem die Spannung gelesen wird."
+      "description": "Automatisch erkannter BMV712-Dienst (schreibgeschützt).",
+      "readOnly": true
     },
     "voltage_path": {
       "type": "string",
-      "description": "Objektpfad des Spannungswertes innerhalb des Dienstes."
+      "description": "Spannungspfad des automatisch erkannten BMV712 (schreibgeschützt).",
+      "readOnly": true
     }
   },
   "required": [
