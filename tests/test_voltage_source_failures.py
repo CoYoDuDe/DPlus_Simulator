@@ -10,10 +10,10 @@ import pytest
 
 import dplus_sim
 from dplus_sim import (
-    Bmv712DetectionError,
-    Bmv712ServiceInfo,
     DEFAULT_SETTINGS,
     DPlusController,
+    VoltageServiceDiscoveryError,
+    VoltageServiceInfo,
     VoltageSourceError,
 )
 
@@ -40,7 +40,7 @@ def test_set_voltage_provider_error_marks_state() -> None:
                 "state": "error",
                 "message": "Testfehler",
                 "service": "com.victronenergy.test",
-                "path": "/Dc/0/Voltage",
+                "path": dplus_sim.STARTER_VOLTAGE_PATH,
                 "bus": "system",
                 "available": False,
             },
@@ -49,7 +49,7 @@ def test_set_voltage_provider_error_marks_state() -> None:
         assert status["voltage_source_state"] == "error"
         assert status["voltage_source_message"] == "Testfehler"
         assert status["voltage_source_service"] == "com.victronenergy.test"
-        assert status["voltage_source_path"] == "/Dc/0/Voltage"
+        assert status["voltage_source_path"] == dplus_sim.STARTER_VOLTAGE_PATH
         assert status["voltage_source_available"] is False
         await controller.shutdown()
 
@@ -241,16 +241,14 @@ def test_run_async_aborts_on_voltage_reader_failure(
         monkeypatch.setattr(dplus_sim, "SettingsBridge", DummySettingsBridge)
         monkeypatch.setattr(dplus_sim, "DbusNextSettingsAdapter", DummyDbusSettingsAdapter)
 
-        async def fake_resolver(bus_choice: str) -> Bmv712ServiceInfo:
-            return Bmv712ServiceInfo(
+        async def fake_resolver(bus_choice: str) -> VoltageServiceInfo:
+            return VoltageServiceInfo(
                 service_name="com.victronenergy.battery.fake",
-                object_path="/Dc/0/Voltage",
+                object_path=dplus_sim.STARTER_VOLTAGE_PATH,
                 bus_choice=bus_choice,
-                product_id=0xA381,
-                product_name="BMV-712 Smart",
             )
 
-        monkeypatch.setattr(dplus_sim, "resolve_bmv712_service", fake_resolver)
+        monkeypatch.setattr(dplus_sim, "resolve_starter_voltage_service", fake_resolver)
 
         args = argparse.Namespace(
             bus=None,
@@ -274,7 +272,7 @@ def test_run_async_aborts_on_voltage_reader_failure(
     asyncio.run(scenario())
 
 
-def test_run_async_aborts_when_bmv712_missing(
+def test_run_async_aborts_when_starter_voltage_missing(
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -372,10 +370,10 @@ def test_run_async_aborts_when_bmv712_missing(
         monkeypatch.setattr(dplus_sim, "SettingsBridge", DummySettingsBridge)
         monkeypatch.setattr(dplus_sim, "DbusNextSettingsAdapter", DummyDbusSettingsAdapter)
 
-        async def failing_resolver(_bus_choice: str) -> Bmv712ServiceInfo:
-            raise Bmv712DetectionError("kein Gerät gefunden")
+        async def failing_resolver(_bus_choice: str) -> VoltageServiceInfo:
+            raise VoltageServiceDiscoveryError("kein Dienst gefunden")
 
-        monkeypatch.setattr(dplus_sim, "resolve_bmv712_service", failing_resolver)
+        monkeypatch.setattr(dplus_sim, "resolve_starter_voltage_service", failing_resolver)
 
         args = argparse.Namespace(
             bus=None,
@@ -393,7 +391,7 @@ def test_run_async_aborts_when_bmv712_missing(
         states = created[0].recorded_states
         assert any(state["voltage_source_state"] == "not-found" for state in states)
         assert any(
-            "BMV712-Dienst konnte nicht gefunden werden" in record.getMessage()
+            "Starterspannung konnte nicht gefunden werden" in record.getMessage()
             for record in caplog.records
         )
 

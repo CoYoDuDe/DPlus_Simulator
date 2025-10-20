@@ -284,10 +284,10 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     "service_path": {
         "path": "/Settings/Devices/DPlusSim/ServicePath",
         "type": "s",
-        "default": "",
+        "default": "com.victronenergy.system",
         "description": (
-            "D-Bus-Service, der automatisch auf den erkannten BMV712 gesetzt wird. "
-            "Manuelle Änderungen werden verworfen."
+            "D-Bus-Dienst, der die Starterspannung bereitstellt. Der Dienst wird "
+            "automatisch erkannt; manuelle Änderungen werden verworfen."
         ),
         "min": 0,
         "max": 0,
@@ -295,10 +295,10 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     "voltage_path": {
         "path": "/Settings/Devices/DPlusSim/VoltagePath",
         "type": "s",
-        "default": "/Dc/0/Voltage",
+        "default": "/StarterVoltage",
         "description": (
-            "Objektpfad des Spannungswertes innerhalb des automatisch erkannten "
-            "BMV712-Dienstes. Manuelle Änderungen werden verworfen."
+            "Objektpfad der Starterspannung innerhalb des automatisch erkannten "
+            "Dienstes. Manuelle Änderungen werden verworfen."
         ),
         "min": 0,
         "max": 0,
@@ -313,22 +313,27 @@ StatusCallback = Callable[[Dict[str, Any]], Optional[Awaitable[None]]]
 VoltageProvider = Callable[[], Awaitable[Optional[float]]]
 
 
-BMV712_SERVICE_PREFIX = "com.victronenergy.battery."
-BMV712_VOLTAGE_PATH = "/Dc/0/Voltage"
-BMV712_PRODUCT_IDS = {0xA381}
+SYSTEM_SERVICE_NAME = "com.victronenergy.system"
+BATTERY_SERVICE_PREFIX = "com.victronenergy.battery."
+STARTER_VOLTAGE_PATH = "/StarterVoltage"
 
 
-class Bmv712DetectionError(RuntimeError):
-    """Signalisiert, dass kein geeigneter BMV712-Dienst gefunden wurde."""
+class VoltageServiceDiscoveryError(RuntimeError):
+    """Signalisiert, dass kein Dienst mit Starterspannung gefunden wurde."""
 
 
 @dataclass(frozen=True)
-class Bmv712ServiceInfo:
+class VoltageServiceInfo:
     service_name: str
     object_path: str
     bus_choice: str
     product_id: Optional[int] = None
     product_name: str = ""
+
+
+# Rückwärtskompatibilität zu älteren Namen
+Bmv712DetectionError = VoltageServiceDiscoveryError
+Bmv712ServiceInfo = VoltageServiceInfo
 
 
 def _unwrap_dbus_value(value: Any) -> Any:
@@ -347,14 +352,16 @@ async def _list_dbus_names(bus: MessageBus) -> Iterable[str]:
         )
     )
     if getattr(reply, "message_type", None) != getattr(MessageType, "METHOD_RETURN", None):
-        raise Bmv712DetectionError("Antwort von org.freedesktop.DBus.ListNames ist ungültig")
+        raise VoltageServiceDiscoveryError(
+            "Antwort von org.freedesktop.DBus.ListNames ist ungültig"
+        )
     body = getattr(reply, "body", [])
     if not body:
         return []
     names = _unwrap_dbus_value(body[0])
     if isinstance(names, (list, tuple)):
         return [str(name) for name in names]
-    raise Bmv712DetectionError("Antwort von org.freedesktop.DBus.ListNames ist leer")
+    raise VoltageServiceDiscoveryError("Antwort von org.freedesktop.DBus.ListNames ist leer")
 
 
 async def _read_bus_value(bus: MessageBus, service: str, path: str) -> Any:
@@ -367,7 +374,7 @@ async def _read_bus_value(bus: MessageBus, service: str, path: str) -> Any:
         )
     )
     if getattr(reply, "message_type", None) != getattr(MessageType, "METHOD_RETURN", None):
-        raise Bmv712DetectionError(
+        raise VoltageServiceDiscoveryError(
             f"Dienst {service} hat keine gültige Antwort für {path} geliefert"
         )
     body = getattr(reply, "body", [])
@@ -376,90 +383,64 @@ async def _read_bus_value(bus: MessageBus, service: str, path: str) -> Any:
     return _unwrap_dbus_value(body[0])
 
 
-def _is_bmv712(product_id: Optional[int], product_name: str) -> bool:
-    normalized_name = product_name.lower().replace("-", "").replace(" ", "")
-    if "bmv712" in normalized_name:
-        return True
-    if product_id is not None and product_id in BMV712_PRODUCT_IDS:
-        return True
-    return False
-
-
-async def resolve_bmv712_service(bus_choice: str) -> Bmv712ServiceInfo:
-    """Sucht den BMV712-Dienst auf dem angegebenen D-Bus."""
+async def resolve_starter_voltage_service(bus_choice: str) -> VoltageServiceInfo:
+    """Sucht einen Dienst, der die Starterspannung bereitstellt."""
 
     if BusType is None or MessageBus is None or Message is None:
-        raise Bmv712DetectionError("D-Bus-Unterstützung ist nicht verfügbar")
+        raise VoltageServiceDiscoveryError("D-Bus-Unterstützung ist nicht verfügbar")
 
-    logger = logging.getLogger("Bmv712Resolver")
+    logger = logging.getLogger("StarterVoltageResolver")
     bus_choice_normalized, bus_type = resolve_bus_configuration(bus_choice)
     bus: Optional[MessageBus] = None
     try:
         connect_kwargs = {"bus_type": bus_type} if bus_type is not None else {}
         bus = await MessageBus(**connect_kwargs).connect()
     except Exception as exc:
-        raise Bmv712DetectionError(
+        raise VoltageServiceDiscoveryError(
             f"Verbindung zum {bus_choice_normalized}-Bus fehlgeschlagen: {exc}"
         ) from exc
 
     try:
+        try:
+            value = await _read_bus_value(bus, SYSTEM_SERVICE_NAME, STARTER_VOLTAGE_PATH)
+        except Exception as exc:
+            logger.debug(
+                "Systemdienst stellt keine Starterspannung bereit: %s",
+                exc,
+            )
+        else:
+            if value is not None:
+                logger.info(
+                    "Starterspannung über %s gefunden",
+                    SYSTEM_SERVICE_NAME,
+                )
+                return VoltageServiceInfo(
+                    service_name=SYSTEM_SERVICE_NAME,
+                    object_path=STARTER_VOLTAGE_PATH,
+                    bus_choice=bus_choice_normalized,
+                )
+
         names = await _list_dbus_names(bus)
-        candidates = sorted(name for name in names if name.startswith(BMV712_SERVICE_PREFIX))
+        candidates = [name for name in names if name.startswith(BATTERY_SERVICE_PREFIX)]
         logger.debug("Gefundene Victron-Batteriedienste: %s", ", ".join(candidates))
         for candidate in candidates:
             try:
-                product_id_value = await _read_bus_value(bus, candidate, "/ProductId")
+                value = await _read_bus_value(bus, candidate, STARTER_VOLTAGE_PATH)
             except Exception as exc:
                 logger.debug(
-                    "Produktkennung von %s konnte nicht gelesen werden: %s",
+                    "StarterVoltage bei %s konnte nicht gelesen werden: %s",
                     candidate,
                     exc,
                 )
                 continue
-            product_id: Optional[int]
-            try:
-                product_id = int(product_id_value)
-            except (TypeError, ValueError):
-                product_id = None
-            try:
-                product_name_value = await _read_bus_value(bus, candidate, "/ProductName")
-            except Exception as exc:
-                logger.debug(
-                    "Produktname von %s konnte nicht gelesen werden: %s",
-                    candidate,
-                    exc,
-                )
+            if value is None:
+                logger.debug("StarterVoltage bei %s ist nicht verfügbar", candidate)
                 continue
-            product_name = str(product_name_value)
-            if not _is_bmv712(product_id, product_name):
-                logger.debug(
-                    "Dienst %s (%s / %s) ist kein BMV712",
-                    candidate,
-                    product_id,
-                    product_name,
-                )
-                continue
-            try:
-                await _read_bus_value(bus, candidate, BMV712_VOLTAGE_PATH)
-            except Exception as exc:
-                logger.debug(
-                    "Spannungspfad bei %s konnte nicht gelesen werden: %s",
-                    candidate,
-                    exc,
-                )
-                continue
-            logger.info(
-                "BMV712 erkannt: %s (ID %s, Name %s)",
-                candidate,
-                product_id,
-                product_name,
-            )
-            return Bmv712ServiceInfo(
+            logger.info("Starterspannung über %s gefunden", candidate)
+            return VoltageServiceInfo(
                 service_name=candidate,
-                object_path=BMV712_VOLTAGE_PATH,
+                object_path=STARTER_VOLTAGE_PATH,
                 bus_choice=bus_choice_normalized,
-                product_id=product_id,
-                product_name=product_name,
             )
     finally:
         if bus is not None:
@@ -474,7 +455,15 @@ async def resolve_bmv712_service(bus_choice: str) -> Bmv712ServiceInfo:
                 with contextlib.suppress(Exception):
                     await wait_for_disconnect()
 
-    raise Bmv712DetectionError("Kein Victron BMV712 auf dem D-Bus gefunden")
+    raise VoltageServiceDiscoveryError(
+        "Keine Starterspannung auf dem D-Bus gefunden"
+    )
+
+
+async def resolve_bmv712_service(bus_choice: str) -> VoltageServiceInfo:
+    """Alias für Kompatibilität – verweist auf die Starterspannungs-Erkennung."""
+
+    return await resolve_starter_voltage_service(bus_choice)
 
 
 class VoltageSourceError(RuntimeError):
@@ -2995,7 +2984,7 @@ async def run_async(args: argparse.Namespace) -> None:
             merged_settings.get("dbus_bus", selected_bus)
         )
 
-    resolved_bmv712: Optional[Bmv712ServiceInfo] = None
+    resolved_voltage_source: Optional[VoltageServiceInfo] = None
     voltage_constraints: Dict[str, str] = {}
 
     controller = DPlusController(merged_settings, use_gpio=not args.dry_run)
@@ -3061,23 +3050,23 @@ async def run_async(args: argparse.Namespace) -> None:
         else:
             bus_choice = merged_settings.get("dbus_bus", "system")
             try:
-                resolved_bmv712 = await resolve_bmv712_service(bus_choice)
-            except Bmv712DetectionError as exc:
-                reason = f"BMV712-Dienst konnte nicht gefunden werden: {exc}"
+                resolved_voltage_source = await resolve_starter_voltage_service(bus_choice)
+            except VoltageServiceDiscoveryError as exc:
+                reason = f"Starterspannung konnte nicht gefunden werden: {exc}"
                 logging.getLogger("DPlusSim").error(reason)
                 await mark_voltage_failure(
                     reason,
                     state="not-found",
                     service="",
-                    path=BMV712_VOLTAGE_PATH,
+                    path=STARTER_VOLTAGE_PATH,
                     bus_choice=bus_choice,
                 )
                 request_shutdown()
                 startup_failed = True
             else:
                 voltage_constraints = {
-                    "service_path": resolved_bmv712.service_name,
-                    "voltage_path": resolved_bmv712.object_path,
+                    "service_path": resolved_voltage_source.service_name,
+                    "voltage_path": resolved_voltage_source.object_path,
                 }
                 merged_settings.update(voltage_constraints)
                 if settings_backend is not None:
@@ -3085,13 +3074,13 @@ async def run_async(args: argparse.Namespace) -> None:
                         await settings_backend.apply(voltage_constraints)
                     except Exception as exc:
                         logging.getLogger("DPlusSim").warning(
-                            "Automatische Übernahme der BMV712-Einstellungen fehlgeschlagen: %s",
+                            "Automatische Übernahme der Starterspannungs-Einstellungen fehlgeschlagen: %s",
                             exc,
                         )
                 voltage_reader = DbusVoltageReader(
-                    resolved_bmv712.service_name,
-                    resolved_bmv712.object_path,
-                    resolved_bmv712.bus_choice,
+                    resolved_voltage_source.service_name,
+                    resolved_voltage_source.object_path,
+                    resolved_voltage_source.bus_choice,
                 )
                 try:
                     await voltage_reader.initialize()
@@ -3103,9 +3092,9 @@ async def run_async(args: argparse.Namespace) -> None:
                     await mark_voltage_failure(
                         reason,
                         state="error",
-                        service=resolved_bmv712.service_name,
-                        path=resolved_bmv712.object_path,
-                        bus_choice=resolved_bmv712.bus_choice,
+                        service=resolved_voltage_source.service_name,
+                        path=resolved_voltage_source.object_path,
+                        bus_choice=resolved_voltage_source.bus_choice,
                     )
                     request_shutdown()
                     startup_failed = True
@@ -3118,8 +3107,8 @@ async def run_async(args: argparse.Namespace) -> None:
                             **voltage_reader.metadata,
                             "reader": voltage_reader,
                             "available": False,
-                            "product_id": resolved_bmv712.product_id,
-                            "product_name": resolved_bmv712.product_name,
+                            "product_id": resolved_voltage_source.product_id,
+                            "product_name": resolved_voltage_source.product_name,
                         },
                     )
                     logging.getLogger("DPlusSim").info(
@@ -3143,7 +3132,7 @@ async def run_async(args: argparse.Namespace) -> None:
     if settings_backend is not None:
 
         async def handle_setting_update(key: str, value: Any) -> None:
-            nonlocal voltage_reader, startup_failed, resolved_bmv712, voltage_constraints
+            nonlocal voltage_reader, startup_failed, resolved_voltage_source, voltage_constraints
             if key == "dbus_bus":
                 logging.getLogger("DPlusSim").warning(
                     "Änderungen am D-Bus-Typ (%s) werden erst nach einem Neustart wirksam",
@@ -3152,16 +3141,16 @@ async def run_async(args: argparse.Namespace) -> None:
                 return
             if key in {"service_path", "voltage_path"}:
                 expected = voltage_constraints.get(key)
-                if expected is None and resolved_bmv712 is not None:
+                if expected is None and resolved_voltage_source is not None:
                     expected = (
-                        resolved_bmv712.service_name
+                        resolved_voltage_source.service_name
                         if key == "service_path"
-                        else resolved_bmv712.object_path
+                        else resolved_voltage_source.object_path
                     )
                 normalized_value = str(value).strip()
                 if expected is None:
                     logging.getLogger("DPlusSim").warning(
-                        "Keine automatische BMV712-Erkennung aktiv – ignorierte Änderung %s=%s",
+                        "Keine automatische Starterspannungs-Erkennung aktiv – ignorierte Änderung %s=%s",
                         key,
                         normalized_value,
                     )

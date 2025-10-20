@@ -17,11 +17,12 @@ Der DPlus Simulator stellt eine Software-Komponente bereit, mit der die D+-Signa
 ## Installation
 Die Installation erfolgt über den SetupHelper in Kombination mit dem Victron PackageManager:
 
-> **Wichtig:** Der Dienst startet nur, wenn auf dem gewählten D-Bus ein Victron BMV712
-> gefunden wird. Der zugehörige D-Bus-Service und der Spannungspfad werden automatisch
-> ermittelt; Manipulationen an `ServicePath`/`VoltagePath` werden ignoriert. Bei fehlender
-> oder gestörter Verbindung bricht der Dienst kontrolliert ab, damit kein simuliertes
-> D+-Signal ohne reale Spannungsdaten erzeugt wird.
+> **Wichtig:** Der Dienst startet nur, wenn auf dem gewählten D-Bus ein Dienst die
+> Starterspannung (`/StarterVoltage`) bereitstellt. Vorrangig wird `com.victronenergy.system`
+> genutzt; fällt dieser Dienst aus, wird nach dem ersten passenden `com.victronenergy.battery.*`
+> gesucht. Der gefundene Service und Pfad werden automatisch übernommen; Manipulationen an
+> `ServicePath`/`VoltagePath` werden ignoriert. Fehlt eine gültige Quelle, beendet sich der
+> Simulator kontrolliert, damit kein D+-Signal ohne reale Spannungsdaten erzeugt wird.
 
 ### Konfigurationspfade
 Die Konfiguration erfolgt über den Victron DBus (Service `com.victronenergy.settings`).
@@ -39,12 +40,12 @@ Die wichtigsten Schlüssel im Gerätekontext `Settings/Devices/DPlusSim` sind:
 | `RelayChannel` | Ausgewählter gpiosetup-Relay-Kanal (z. B. `4brelays/0`), exklusiv vom Simulator belegt. |
 | `ForceOn` / `ForceOff` | Erzwingt dauerhaft ein aktiviertes bzw. deaktiviertes Ausgangssignal. |
 | `StatusPublishInterval` | Aktualisierungsintervall der Statusmeldungen. |
-| `ServicePath` | Wird automatisch auf den erkannten BMV712-Service gesetzt (schreibgeschützt). |
-| `VoltagePath` | Schreibgeschützter Spannungspfad des automatisch erkannten BMV712. |
+| `ServicePath` | Automatisch erkannter Dienst für die Starterspannung (schreibgeschützt). |
+| `VoltagePath` | Schreibgeschützter Starterspannungs-Pfad (`/StarterVoltage`). |
 
 Alle Werte lassen sich über den DBus-Explorer oder per `dbus-spy` anpassen. Änderungen werden sofort vom Dienst übernommen und – dank `SettingsDevice` – dauerhaft im `com.victronenergy.settings`-Baum hinterlegt.
 
-Der Simulator sucht beim Start nach einem Victron BMV712 auf dem ausgewählten D-Bus und übernimmt dessen Service- sowie Spannungspfad automatisch. Schlägt die Suche fehl, wird der Dienst beendet und meldet einen entsprechenden Fehlerzustand.
+Der Simulator prüft beim Start zuerst `com.victronenergy.system` auf das Vorhandensein von `/StarterVoltage`. Ist dort kein Wert verfügbar, werden alle `com.victronenergy.battery.*`-Dienste durchsucht. Der erste Dienst mit gültiger Starterspannung wird übernommen; schlägt die Suche fehl, meldet der Dienst einen Fehlerzustand und stoppt.
 
 ### Abhängigkeiten der Ausgangsmodi
 - **MOSFET-/GPIO-Modus (`OutputMode=gpio`)**: Funktioniert ohne weitere Zusatzpakete, solange der konfigurierte GPIO frei ist.
@@ -86,6 +87,6 @@ Damit lassen sich die Entscheidungen des Reglers transparent nachverfolgen.
 | Problem | Mögliche Ursache | Lösung |
 |---------|------------------|--------|
 | Simulation startet nicht | Paket nicht installiert oder Dienst nicht aktiv | PackageManager-Log prüfen, Dienst neu starten (`svc -t dplus-simulator`) |
-| Dienst stoppt sofort nach dem Start | Kein BMV712 auf dem gewählten D-Bus gefunden oder Verbindung zur Spannungsquelle instabil | Verkabelung und D-Bus prüfen; sicherstellen, dass der BMV712 sichtbar ist und Dienst erneut starten |
+| Dienst stoppt sofort nach dem Start | Kein Dienst mit `/StarterVoltage` auf dem gewählten D-Bus gefunden oder Verbindung zur Spannungsquelle instabil | Verkabelung und D-Bus prüfen; sicherstellen, dass System- oder Batteriedienste die Starterspannung liefern, und Dienst erneut starten |
 | Kein Ausgangssignal | Falsche Hardware-Verdrahtung oder fehlender Ausgangstreiber | Verkabelung prüfen, Relais/MOSFET auf Funktion testen |
 | Fehlende DBus-Einträge | Service nicht registriert | Systemlog (`journalctl -u dplus-simulator`) prüfen |

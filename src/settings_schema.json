@@ -97,12 +97,12 @@
     },
     "service_path": {
       "type": "string",
-      "description": "Automatisch erkannter BMV712-Dienst (schreibgeschützt).",
+      "description": "Automatisch erkannter Dienst für die Starterspannung (schreibgeschützt).",
       "readOnly": true
     },
     "voltage_path": {
       "type": "string",
-      "description": "Spannungspfad des automatisch erkannten BMV712 (schreibgeschützt).",
+      "description": "Spannungspfad der Starterspannung (schreibgeschützt, z. B. /StarterVoltage).",
       "readOnly": true
     }
   },
