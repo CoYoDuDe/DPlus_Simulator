@@ -670,8 +670,8 @@ register_settings_definitions() {
     "/Settings/Devices/DPlusSim/ForceOff|b|0|Erzwingt dauerhaft ein deaktiviertes D+-Signal."
     "/Settings/Devices/DPlusSim/StatusPublishInterval|f|2.0|Intervall in Sekunden zur Veröffentlichung des Status über D-Bus-Signale."
     "/Settings/Devices/DPlusSim/DbusBus|s|system|Zu verwendender D-Bus (system oder session)."
-    "/Settings/Devices/DPlusSim/ServicePath|s|com.victronenergy.battery|D-Bus-Service, aus dem die Spannung gelesen wird."
-    "/Settings/Devices/DPlusSim/VoltagePath|s|/Dc/0/Voltage|Objektpfad des Spannungswertes."
+    "/Settings/Devices/DPlusSim/ServicePath|s|com.victronenergy.system|Automatisch erkannter Dienst für die Starterspannung (schreibgeschützt; Änderungen werden überschrieben)."
+    "/Settings/Devices/DPlusSim/VoltagePath|s|/StarterVoltage|Schreibgeschützter Starterspannungs-Pfad (/StarterVoltage) des automatisch erkannten Dienstes."
     "/Settings/Devices/DPlusSim/OutputMode|s|gpio|Steuerungsmodus für den D+-Ausgang (gpio oder relay)."
     "/Settings/Devices/DPlusSim/RelayChannel|s|4brelays/0|Ausgewählter Relay-Kanal aus der gpiosetup-Konfiguration."
   )

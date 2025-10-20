@@ -16,5 +16,5 @@
 {"path": "/Settings/Devices/DPlusSim/ForceOff", "type": "b", "default": false, "min": 0, "max": 1, "description": "Erzwingt ein dauerhaft deaktiviertes D+-Signal, unabhängig von den Eingangswerten."}
 {"path": "/Settings/Devices/DPlusSim/StatusPublishInterval", "type": "d", "default": 2.0, "min": 0.2, "max": 0.0, "description": "Intervall in Sekunden zur Veröffentlichung des Status über D-Bus-Signale."}
 {"path": "/Settings/Devices/DPlusSim/DbusBus", "type": "s", "default": "system", "min": 0, "max": 0, "description": "Zu verwendender D-Bus (system oder session)."}
-{"path": "/Settings/Devices/DPlusSim/ServicePath", "type": "s", "default": "com.victronenergy.battery", "min": 0, "max": 0, "description": "D-Bus-Service, aus dem die Starterbatterie-Spannung gelesen wird."}
-{"path": "/Settings/Devices/DPlusSim/VoltagePath", "type": "s", "default": "/Dc/0/Voltage", "min": 0, "max": 0, "description": "Objektpfad des Spannungswertes innerhalb des Service."}
+{"path": "/Settings/Devices/DPlusSim/ServicePath", "type": "s", "default": "com.victronenergy.system", "min": 0, "max": 0, "description": "Automatisch erkannter D-Bus-Dienst für die Starterspannung (schreibgeschützt; manuelle Änderungen werden überschrieben)."}
+{"path": "/Settings/Devices/DPlusSim/VoltagePath", "type": "s", "default": "/StarterVoltage", "min": 0, "max": 0, "description": "Schreibgeschützter Starterspannungs-Pfad (/StarterVoltage) des automatisch erkannten Dienstes."}
