@@ -18,7 +18,7 @@ import logging
 import math
 import os
 import queue
-import signal
+import signal as stdlib_signal
 import sys
 import threading
 import time
@@ -1849,14 +1849,14 @@ class SimulatorStatus:
     on_delay_remaining: float = 0.0
     off_delay_remaining: float = 0.0
     timestamp: float = field(default_factory=lambda: time.time())
-    voltage_source: str = "manual"
-    voltage_source_state: str = "manual"
-    voltage_source_message: str = ""
+    voltage_source: str = "unavailable"
+    voltage_source_state: str = "unavailable"
+    voltage_source_message: str = "Keine Spannungsquelle verfügbar"
     voltage_source_service: str = ""
     voltage_source_path: str = ""
     voltage_source_bus: str = ""
-    voltage_source_mode: str = ""
-    voltage_source_available: bool = True
+    voltage_source_mode: str = "dbus"
+    voltage_source_available: bool = False
     voltage_source_failures: int = 0
     voltage_source_last_error: str = ""
     voltage_source_last_update: float = 0.0
@@ -1989,18 +1989,22 @@ class DPlusController:
         self._status_callback: Optional[StatusCallback] = None
         self._lock = asyncio.Lock()
         self._voltage_provider: Optional[VoltageProvider] = None
-        self._voltage_source_label = "manual"
+        self._voltage_source_label = "unavailable"
         self._status.voltage_source = self._voltage_source_label
         self._status.voltage_source_service = ""
         self._status.voltage_source_path = ""
         self._status.voltage_source_bus = ""
-        self._status.voltage_source_mode = "manual"
-        self._status.voltage_source_available = True
+        self._status.voltage_source_mode = "dbus"
+        self._status.voltage_source_available = False
         self._status.voltage_source_failures = 0
-        self._status.voltage_source_last_error = ""
+        self._status.voltage_source_last_error = "Keine Spannungsquelle verfügbar"
         self._status.voltage_source_last_update = 0.0
-        self._voltage_provider_details: Dict[str, Any] = {}
-        self._voltage_source_available = True
+        self._voltage_provider_details: Dict[str, Any] = {
+            "state": "unavailable",
+            "message": "Keine Spannungsquelle verfügbar",
+            "available": False,
+        }
+        self._voltage_source_available = False
         self._relay_function_monitor: Optional[RelayFunctionMonitor] = None
         self._relay_function_assignments: Dict[str, str] = {}
         self._relay_function_tag = RELAY_FUNCTION_TAG
@@ -2213,7 +2217,7 @@ class DPlusController:
             if source_label is not None:
                 self._voltage_source_label = source_label
             elif provider is None:
-                self._voltage_source_label = "manual"
+                self._voltage_source_label = "unavailable"
             info: Dict[str, Any] = dict(source_info or {})
             reader = info.get("reader")
             combined_info = dict(info)
@@ -2230,13 +2234,24 @@ class DPlusController:
             self._voltage_provider_details = combined_info
             self._status.voltage_source = self._voltage_source_label
             if provider is None:
-                self._status.voltage_source_state = "manual"
-                self._status.voltage_source_message = ""
-                self._status.voltage_source_service = ""
-                self._status.voltage_source_path = ""
-                self._status.voltage_source_bus = ""
-                self._status.voltage_source_mode = "manual"
-                self._status.voltage_source_available = True
+                state = str(combined_info.get("state", "unavailable"))
+                message = str(
+                    combined_info.get("message", "Keine Spannungsquelle verfügbar")
+                )
+                self._status.voltage_source_state = state
+                self._status.voltage_source_message = message
+                self._status.voltage_source_service = str(combined_info.get("service", ""))
+                self._status.voltage_source_path = str(combined_info.get("path", ""))
+                self._status.voltage_source_bus = str(combined_info.get("bus", ""))
+                self._status.voltage_source_mode = str(combined_info.get("mode", "dbus"))
+                self._status.voltage_source_available = bool(
+                    combined_info.get("available", False)
+                )
+                self._status.voltage_source_last_error = message
+                self._status.voltage_source_failures = int(
+                    combined_info.get("failures", self._status.voltage_source_failures)
+                )
+                self._status.voltage_source_last_update = 0.0
             else:
                 self._status.voltage_source_state = "initializing"
                 self._status.voltage_source_message = ""
@@ -2245,10 +2260,15 @@ class DPlusController:
                 self._status.voltage_source_bus = str(combined_info.get("bus", ""))
                 self._status.voltage_source_mode = str(combined_info.get("mode", "dbus"))
                 self._status.voltage_source_available = False
-            self._status.voltage_source_failures = 0
-            self._status.voltage_source_last_error = ""
-            self._status.voltage_source_last_update = 0.0
-            self._voltage_source_available = provider is None
+                self._status.voltage_source_last_error = ""
+                self._status.voltage_source_failures = 0
+                self._status.voltage_source_last_update = 0.0
+            if provider is None:
+                self._voltage_source_available = bool(
+                    combined_info.get("available", False)
+                )
+            else:
+                self._voltage_source_available = False
             await self._notify_status_locked()
 
     async def start(self) -> None:
@@ -2386,7 +2406,11 @@ class DPlusController:
                     provider_details = dict(self._voltage_provider_details)
                 new_voltage: Optional[float] = None
                 provider_error: Optional[VoltageSourceError] = None
-                provider_state = "manual" if provider is None else "initializing"
+                provider_state = (
+                    str(provider_details.get("state", "unavailable"))
+                    if provider is None
+                    else "initializing"
+                )
                 if provider is not None:
                     try:
                         new_voltage = await provider()
@@ -2413,13 +2437,23 @@ class DPlusController:
                         else 0.0
                     )
                     if provider is None:
-                        self._status.voltage_source_state = "manual"
-                        self._status.voltage_source_message = ""
-                        self._status.voltage_source_available = True
-                        self._status.voltage_source_failures = 0
-                        self._status.voltage_source_last_error = ""
-                        self._status.voltage_source_last_update = time.time()
-                        self._voltage_source_available = True
+                        state = str(provider_details.get("state", "unavailable"))
+                        message = str(
+                            provider_details.get("message", "Keine Spannungsquelle verfügbar")
+                        )
+                        available_flag = bool(provider_details.get("available", False))
+                        failures = int(provider_details.get("failures", 0))
+                        last_update_hint = float(provider_details.get("last_update", 0.0))
+                        self._status.voltage_source_state = state
+                        self._status.voltage_source_message = message
+                        self._status.voltage_source_available = available_flag
+                        self._status.voltage_source_failures = failures
+                        self._status.voltage_source_last_error = message
+                        self._status.voltage_source_last_update = (
+                            last_update_hint if last_update_hint else time.time()
+                        )
+                        self._voltage_source_available = available_flag
+                        self._voltage = 0.0
                     elif provider_error is not None:
                         self._status.voltage_source_state = "error"
                         self._status.voltage_source_message = str(provider_error)
@@ -2477,7 +2511,7 @@ class DPlusController:
         now = time.monotonic()
         ignition_state = self._ignition_input.read() if self._ignition_input else False
         ignition_required = bool(self._settings.get("use_ignition", False))
-        source_available = self._voltage_source_available or self._voltage_provider is None
+        source_available = bool(self._voltage_provider) and self._voltage_source_available
         self._status.voltage_source_available = source_available
         on_dependencies: Dict[str, bool] = {}
         off_dependencies: Dict[str, bool] = {}
@@ -2617,11 +2651,11 @@ def setup_logging(level: str) -> None:
 
 
 def install_signal_handlers(loop: asyncio.AbstractEventLoop, stop_callback: Callable[[], None]) -> None:
-    for sig in (signal.SIGINT, signal.SIGTERM):
+    for sig in (stdlib_signal.SIGINT, stdlib_signal.SIGTERM):
         try:
             loop.add_signal_handler(sig, stop_callback)
         except NotImplementedError:  # pragma: no-cover - Windows Fallback
-            signal.signal(sig, lambda *_: stop_callback())
+            stdlib_signal.signal(sig, lambda *_: stop_callback())
 
 
 def resolve_bus_configuration(bus_value: Any) -> Tuple[str, Optional[Any]]:
@@ -2655,6 +2689,16 @@ async def run_async(args: argparse.Namespace) -> None:
     settings_backend: Optional[BaseSettingsAdapter] = None
     settings_bus: Optional[MessageBus] = None
     settings_overrides: Dict[str, Any] = {}
+
+    loop = asyncio.get_running_loop()
+    shutdown_event = asyncio.Event()
+
+    def request_shutdown() -> None:
+        if not shutdown_event.is_set():
+            logging.getLogger("DPlusSim").info("Beende Dienst nach Shutdown-Anforderung")
+            shutdown_event.set()
+
+    install_signal_handlers(loop, request_shutdown)
 
     selected_bus, bus_type_for_connection = resolve_bus_configuration(
         args.bus if args.bus else merged_settings.get("dbus_bus", "system")
@@ -2739,8 +2783,32 @@ async def run_async(args: argparse.Namespace) -> None:
 
     controller = DPlusController(merged_settings, use_gpio=not args.dry_run)
     relay_function_monitor: Optional[RelayFunctionMonitor] = None
+    startup_failed = shutdown_event.is_set()
+
+    async def mark_voltage_failure(
+        message: str,
+        *,
+        state: str = "unavailable",
+        service: str = "",
+        path: str = "",
+        bus_choice: Optional[str] = None,
+    ) -> None:
+        info = {
+            "state": state,
+            "message": message,
+            "service": service,
+            "path": path,
+            "bus": bus_choice
+            if bus_choice is not None
+            else merged_settings.get("dbus_bus", "system"),
+            "mode": "dbus",
+            "available": False,
+        }
+        await controller.set_voltage_provider(None, "unavailable", source_info=info)
+
     if (
-        settings_bus is not None
+        not startup_failed
+        and settings_bus is not None
         and MessageBus is not None
         and Message is not None
     ):
@@ -2761,65 +2829,67 @@ async def run_async(args: argparse.Namespace) -> None:
             relay_function_monitor = None
 
     voltage_reader: Optional[DbusVoltageReader] = None
-    if (
-        not args.no_dbus
-        and BusType is not None
-        and MessageBus is not None
-        and Message is not None
-    ):
-        service_name = str(merged_settings.get("service_path", "")).strip()
-        voltage_path = str(merged_settings.get("voltage_path", "")).strip()
-        if service_name and voltage_path:
-            voltage_reader = DbusVoltageReader(
-                service_name,
-                voltage_path,
-                merged_settings.get("dbus_bus", "system"),
-            )
-            try:
-                await voltage_reader.initialize()
-            except VoltageSourceError as exc:
-                logging.getLogger("DPlusSim").warning(
-                    "Initiale Verbindung zur Spannungsquelle fehlgeschlagen: %s",
-                    exc,
-                )
-            await controller.set_voltage_provider(
-                voltage_reader.read_voltage,
-                voltage_reader.description,
-                source_info={**voltage_reader.metadata, "reader": voltage_reader},
-            )
-            logging.getLogger("DPlusSim").info(
-                "Externe Spannungsquelle aktiviert: %s",
-                voltage_reader.description,
-            )
+    if not startup_failed:
+        if (
+            args.no_dbus
+            or BusType is None
+            or MessageBus is None
+            or Message is None
+        ):
+            reason = "D-Bus-Unterstützung nicht verfügbar – der Dienst wird beendet"
+            logging.getLogger("DPlusSim").error(reason)
+            await mark_voltage_failure(reason)
+            request_shutdown()
+            startup_failed = True
         else:
-            await controller.set_voltage_provider(
-                None,
-                "manual",
-                source_info={"mode": "manual"},
-            )
-            logging.getLogger("DPlusSim").info(
-                "Keine externe Spannungsquelle konfiguriert – Spannung muss manuell vorgegeben werden",
-            )
-    else:
-        await controller.set_voltage_provider(
-            None,
-            "manual",
-            source_info={"mode": "manual"},
-        )
-        if not args.no_dbus:
-            logging.getLogger("DPlusSim").warning(
-                "D-Bus-Unterstützung nicht verfügbar – es wird auf manuelle Spannung umgeschaltet",
-            )
-
-    loop = asyncio.get_running_loop()
-    shutdown_event = asyncio.Event()
-
-    def request_shutdown() -> None:
-        if not shutdown_event.is_set():
-            logging.getLogger("DPlusSim").info("Beende Dienst nach Shutdown-Anforderung")
-            shutdown_event.set()
-
-    install_signal_handlers(loop, request_shutdown)
+            service_name = str(merged_settings.get("service_path", "")).strip()
+            voltage_path = str(merged_settings.get("voltage_path", "")).strip()
+            bus_choice = merged_settings.get("dbus_bus", "system")
+            if not service_name or not voltage_path:
+                reason = (
+                    "ServicePath/VoltagePath sind nicht gesetzt – der Dienst wird beendet"
+                )
+                logging.getLogger("DPlusSim").error(reason)
+                await mark_voltage_failure(
+                    reason,
+                    state="invalid-config",
+                    service=service_name,
+                    path=voltage_path,
+                    bus_choice=bus_choice,
+                )
+                request_shutdown()
+                startup_failed = True
+            else:
+                voltage_reader = DbusVoltageReader(service_name, voltage_path, bus_choice)
+                try:
+                    await voltage_reader.initialize()
+                except VoltageSourceError as exc:
+                    reason = f"Initiale Verbindung zur Spannungsquelle fehlgeschlagen: {exc}"
+                    logging.getLogger("DPlusSim").error(reason)
+                    await mark_voltage_failure(
+                        reason,
+                        state="error",
+                        service=service_name,
+                        path=voltage_path,
+                        bus_choice=bus_choice,
+                    )
+                    request_shutdown()
+                    startup_failed = True
+                    voltage_reader = None
+                else:
+                    await controller.set_voltage_provider(
+                        voltage_reader.read_voltage,
+                        voltage_reader.description,
+                        source_info={
+                            **voltage_reader.metadata,
+                            "reader": voltage_reader,
+                            "available": False,
+                        },
+                    )
+                    logging.getLogger("DPlusSim").info(
+                        "Externe Spannungsquelle aktiviert: %s",
+                        voltage_reader.description,
+                    )
 
     async def persist_settings(updates: Dict[str, Any]) -> None:
         if not updates:
@@ -2831,7 +2901,7 @@ async def run_async(args: argparse.Namespace) -> None:
     if settings_backend is not None:
 
         async def handle_setting_update(key: str, value: Any) -> None:
-            nonlocal voltage_reader
+            nonlocal voltage_reader, startup_failed
             if key == "dbus_bus":
                 logging.getLogger("DPlusSim").warning(
                     "Änderungen am D-Bus-Typ (%s) werden erst nach einem Neustart wirksam",
@@ -2845,14 +2915,13 @@ async def run_async(args: argparse.Namespace) -> None:
                     if voltage_reader is not None:
                         await voltage_reader.close()
                         voltage_reader = None
-                    await controller.set_voltage_provider(
-                        None,
-                        "manual",
-                        source_info={"mode": "manual"},
+                    reason = (
+                        "Spannungsquelle kann ohne D-Bus nicht aktualisiert werden – der Dienst wird beendet"
                     )
-                    logging.getLogger("DPlusSim").warning(
-                        "Spannungsquelle kann ohne D-Bus nicht aktualisiert werden – manuelle Eingabe aktiv",
-                    )
+                    logging.getLogger("DPlusSim").error(reason)
+                    await mark_voltage_failure(reason)
+                    request_shutdown()
+                    startup_failed = True
                     return
                 service_name = str(merged_settings.get("service_path", "")).strip()
                 voltage_path = str(merged_settings.get("voltage_path", "")).strip()
@@ -2860,14 +2929,18 @@ async def run_async(args: argparse.Namespace) -> None:
                     if voltage_reader is not None:
                         await voltage_reader.close()
                         voltage_reader = None
-                    await controller.set_voltage_provider(
-                        None,
-                        "manual",
-                        source_info={"mode": "manual"},
+                    reason = (
+                        "Spannungsquelle deaktiviert – der Dienst wird beendet, bis gültige Werte vorliegen"
                     )
-                    logging.getLogger("DPlusSim").info(
-                        "Externe Spannungsquelle deaktiviert – es wird auf manuelle Spannung gewechselt",
+                    logging.getLogger("DPlusSim").error(reason)
+                    await mark_voltage_failure(
+                        reason,
+                        state="invalid-config",
+                        service=service_name,
+                        path=voltage_path,
                     )
+                    request_shutdown()
+                    startup_failed = True
                     return
                 bus_choice = merged_settings.get("dbus_bus", "system")
                 if (
@@ -2883,10 +2956,23 @@ async def run_async(args: argparse.Namespace) -> None:
                     try:
                         await voltage_reader.initialize()
                     except VoltageSourceError as exc:
-                        logging.getLogger("DPlusSim").warning(
-                            "Verbindung zur Spannungsquelle konnte nicht aufgebaut werden: %s",
-                            exc,
+                        reason = (
+                            f"Verbindung zur Spannungsquelle konnte nicht aufgebaut werden: {exc}"
                         )
+                        logging.getLogger("DPlusSim").error(reason)
+                        await mark_voltage_failure(
+                            reason,
+                            state="error",
+                            service=service_name,
+                            path=voltage_path,
+                            bus_choice=bus_choice,
+                        )
+                        if voltage_reader is not None:
+                            await voltage_reader.close()
+                            voltage_reader = None
+                        request_shutdown()
+                        startup_failed = True
+                        return
                 await controller.set_voltage_provider(
                     voltage_reader.read_voltage,
                     voltage_reader.description,
@@ -2900,11 +2986,12 @@ async def run_async(args: argparse.Namespace) -> None:
 
         settings_backend.set_callback(handle_setting_update)
 
-    await controller.start()
+    if not shutdown_event.is_set():
+        await controller.start()
 
     bus: Optional[MessageBus] = None
     service: Optional[DPlusSimService] = None
-    if BusType is not None and not args.no_dbus:
+    if not shutdown_event.is_set() and BusType is not None and not args.no_dbus:
         try:
             bus_type = (
                 BusType.SYSTEM
@@ -2929,7 +3016,7 @@ async def run_async(args: argparse.Namespace) -> None:
         controller.set_status_callback(lambda _status: None)
 
     waveform_task: Optional[asyncio.Task[None]] = None
-    if args.simulate_waveform:
+    if args.simulate_waveform and not shutdown_event.is_set():
         waveform_task = asyncio.create_task(simulate_waveform(controller, args.simulate_waveform))
 
     try:
@@ -2951,8 +3038,13 @@ async def run_async(args: argparse.Namespace) -> None:
         with contextlib.suppress(Exception):
             await controller.set_voltage_provider(
                 None,
-                "manual",
-                source_info={"mode": "manual"},
+                "offline",
+                source_info={
+                    "state": "offline",
+                    "message": "Dienst wird beendet",
+                    "mode": "dbus",
+                    "available": False,
+                },
             )
 
         with contextlib.suppress(Exception):

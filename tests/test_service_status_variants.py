@@ -44,7 +44,7 @@ NESTED_STATUS: Dict[str, Any] = {
     "ignition": {
         "enabled": True,
         "history": [
-            {"state": False, "reasons": ("voltage", "manual")},
+            {"state": False, "reasons": ("voltage", "unavailable")},
             {"state": True, "reasons": ["override", {"code": 5}]},
         ],
     },
