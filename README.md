@@ -17,6 +17,11 @@ Der DPlus Simulator stellt eine Software-Komponente bereit, mit der die D+-Signa
 ## Installation
 Die Installation erfolgt über den SetupHelper in Kombination mit dem Victron PackageManager:
 
+> **Wichtig:** Der Dienst startet nur, wenn eine funktionierende Verbindung zur konfigurierten
+> BMV712- bzw. Victron-D-Bus-Spannungsquelle hergestellt werden kann. Fehlende oder falsche
+> `ServicePath`-/`VoltagePath`-Einstellungen sowie Verbindungsfehler führen zu einem kontrollierten
+> Shutdown, damit kein simuliertes D+-Signal ohne reale Spannungsdaten erzeugt wird.
+
 ### Konfigurationspfade
 Die Konfiguration erfolgt über den Victron DBus (Service `com.victronenergy.settings`).
 Die wichtigsten Schlüssel im Gerätekontext `Settings/Devices/DPlusSim` sind:
@@ -72,5 +77,6 @@ Damit lassen sich die Entscheidungen des Reglers transparent nachverfolgen.
 | Problem | Mögliche Ursache | Lösung |
 |---------|------------------|--------|
 | Simulation startet nicht | Paket nicht installiert oder Dienst nicht aktiv | PackageManager-Log prüfen, Dienst neu starten (`svc -t dplus-simulator`) |
+| Dienst stoppt sofort nach dem Start | Keine stabile Verbindung zur BMV712-Spannungsquelle oder `ServicePath`/`VoltagePath` leer | Verkabelung sowie D-Bus-Konfiguration prüfen; Dienst neu starten, sobald die Quelle erreichbar ist |
 | Kein Ausgangssignal | Falsche Hardware-Verdrahtung oder fehlender Ausgangstreiber | Verkabelung prüfen, Relais/MOSFET auf Funktion testen |
 | Fehlende DBus-Einträge | Service nicht registriert | Systemlog (`journalctl -u dplus-simulator`) prüfen |
