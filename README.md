@@ -26,8 +26,15 @@ Die Installation erfolgt über den SetupHelper in Kombination mit dem Victron Pa
 
 ### Automatische Vorprüfungen des Installers
 
-Vor dem eigentlichen Installationslauf führt das Setup-Skript eine Preflight-Prüfung durch. Die
-Installation wird nur gestartet, wenn folgende Voraussetzungen erfüllt sind:
+Vor dem eigentlichen Installationslauf führt das Setup-Skript eine Preflight-Prüfung durch.
+
+### Abschlussaktionen nach Installation und Deinstallation
+
+Nach jedem Installations-, Deinstallations- oder Statuslauf signalisiert das Setup-Skript dem SetupHelper jetzt explizit, welche Komponenten geändert wurden. Sobald Dateien, Dienste oder D-Bus-Settings betroffen sind, ruft das Skript `endScript` mit den Flags `INSTALL_FILES`, `INSTALL_SERVICE` und `ADD_DBUS_SETTINGS` auf. Der SetupHelper übernimmt daraufhin automatisch das Kopieren bzw. Entfernen der Dateien, das Aktualisieren des Dienstes sowie – falls erforderlich – GUI-Neustarts oder Reboot-Aufforderungen gemäß den offiziellen Richtlinien.
+
+Wird das Skript ohne SetupHelper ausgeführt (z. B. in lokalen Testumgebungen), kommt ein Fallback zum Einsatz, der die bisherigen Log-Meldungen erzeugt, ohne zusätzliche Neustarts anzustoßen. Dadurch bleiben manuelle Tests und CI-Läufe weiterhin möglich.
+
+Die Installation wird nur gestartet, wenn folgende Voraussetzungen erfüllt sind:
 
 - **SetupHelper ab Version 8.10** – ältere Versionen werden mit einer klaren Fehlermeldung
   abgewiesen.
