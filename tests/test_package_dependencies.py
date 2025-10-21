@@ -77,3 +77,41 @@ register_package_dependencies
         "überspringe packageDependencies-Prüfung" in line
         for line in stdout_lines
     ), "Es wurde keine informative Meldung zum Überspringen der Prüfung ausgegeben."
+
+
+def test_register_package_dependencies_fails_on_conflict(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    setup_script = repo_root / "setup"
+    dependencies_file = tmp_path / "packageDependencies"
+    log_file = tmp_path / "helper_calls.log"
+
+    dependencies_file.write_text("conflict\n", encoding="utf-8")
+
+    script = f"""
+set -euo pipefail
+export DPLUS_SIMULATOR_SKIP_MAIN=1
+source "{setup_script}"
+PACKAGE_DEPENDENCIES_FILE="{dependencies_file}"
+
+checkPackageDependencies() {{
+  printf 'check:%s\\n' "$1" >> "{log_file}"
+  return 3
+}}
+
+register_package_dependencies
+"""
+
+    completed = subprocess.run(
+        ["bash", "-c", script],
+        check=False,
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    _cleanup_helper_state(repo_root)
+
+    assert completed.returncode != 0, "Das Setup-Skript hätte bei Konflikten abbrechen müssen."
+    stdout = completed.stdout.strip().splitlines()
+    assert any("checkPackageDependencies meldete Fehler" in line for line in stdout)
+    log_lines = log_file.read_text(encoding="utf-8").splitlines()
+    assert f"check:{dependencies_file}" in log_lines
