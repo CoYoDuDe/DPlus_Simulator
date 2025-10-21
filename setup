@@ -303,7 +303,12 @@ define_builtin_helper_fallback() {
   }
 
   helper_end() {
-    logMessage INFO "Beende Helper-Sitzung"
+    local flags="$*"
+    if [[ -n "${flags}" ]]; then
+      logMessage INFO "Beende Helper-Sitzung (Flags: ${flags})"
+    else
+      logMessage INFO "Beende Helper-Sitzung"
+    fi
     return 0
   }
 
@@ -312,7 +317,7 @@ define_builtin_helper_fallback() {
   }
 
   endScript() {
-    helper_end
+    helper_end "$@"
   }
 
   helper_enable_dependency_conflict_checks() {
@@ -593,12 +598,28 @@ begin_helper_session() {
 
 end_helper_session() {
   if declare -F endScript >/dev/null; then
-    endScript
+    endScript "$@"
     return
   fi
   if declare -F helper_end >/dev/null; then
-    helper_end
+    helper_end "$@"
   fi
+}
+
+finalize_helper_session() {
+  local -a helper_flags=()
+
+  if [[ "${filesUpdated}" == true ]]; then
+    helper_flags+=("INSTALL_FILES")
+  fi
+  if [[ "${servicesUpdated}" == true ]]; then
+    helper_flags+=("INSTALL_SERVICE")
+  fi
+  if [[ "${dbusSettingsUpdated}" == true ]]; then
+    helper_flags+=("ADD_DBUS_SETTINGS")
+  fi
+
+  end_helper_session "${helper_flags[@]}"
 }
 
 install_service() {
@@ -982,7 +1003,7 @@ perform_install() {
 
   register_dbus_settings
 
-  end_helper_session
+  finalize_helper_session
   log INFO "Installation abgeschlossen"
 }
 
@@ -1005,7 +1026,7 @@ perform_uninstall() {
     filesUpdated=true
   fi
 
-  end_helper_session
+  finalize_helper_session
   log INFO "Deinstallation abgeschlossen"
 }
 
@@ -1036,7 +1057,7 @@ perform_status() {
     log WARN "Keine Statusfunktion für Dienst ${SERVICE_NAME} verfügbar"
   fi
 
-  end_helper_session
+  finalize_helper_session
 }
 
 usage() {
