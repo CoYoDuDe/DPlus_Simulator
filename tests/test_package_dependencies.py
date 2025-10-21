@@ -31,6 +31,7 @@ set -euo pipefail
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 source "{setup_script}"
 PACKAGE_DEPENDENCIES_FILE="{dependencies_file}"
+scriptAction=INSTALL
 
 checkPackageDependencies() {{
   printf 'check:%s\\n' "$1" >> "{log_file}"
@@ -59,6 +60,7 @@ set -euo pipefail
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 source "{setup_script}"
 PACKAGE_DEPENDENCIES_FILE="{dependencies_file}"
+scriptAction=INSTALL
 
 register_package_dependencies
 """
@@ -79,6 +81,64 @@ register_package_dependencies
     ), "Es wurde keine informative Meldung zum Überspringen der Prüfung ausgegeben."
 
 
+def test_register_package_dependencies_skips_for_uninstall(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    setup_script = repo_root / "setup"
+    dependencies_file = tmp_path / "packageDependencies"
+    log_file = tmp_path / "helper_calls.log"
+
+    dependencies_file.write_text("conflict\n", encoding="utf-8")
+
+    script = f"""
+set -euo pipefail
+export DPLUS_SIMULATOR_SKIP_MAIN=1
+source "{setup_script}"
+PACKAGE_DEPENDENCIES_FILE="{dependencies_file}"
+scriptAction=UNINSTALL
+
+checkPackageDependencies() {{
+  printf 'check:%s\\n' "$1" >> "{log_file}"
+  return 0
+}}
+
+register_package_dependencies
+"""
+
+    subprocess.run(["bash", "-c", script], check=True, cwd=repo_root)
+    _cleanup_helper_state(repo_root)
+
+    assert not log_file.exists(), "checkPackageDependencies darf bei UNINSTALL nicht aufgerufen werden."
+
+
+def test_register_package_dependencies_skips_for_status(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    setup_script = repo_root / "setup"
+    dependencies_file = tmp_path / "packageDependencies"
+    log_file = tmp_path / "helper_calls.log"
+
+    dependencies_file.write_text("conflict\n", encoding="utf-8")
+
+    script = f"""
+set -euo pipefail
+export DPLUS_SIMULATOR_SKIP_MAIN=1
+source "{setup_script}"
+PACKAGE_DEPENDENCIES_FILE="{dependencies_file}"
+scriptAction=CHECK
+
+checkPackageDependencies() {{
+  printf 'check:%s\\n' "$1" >> "{log_file}"
+  return 0
+}}
+
+register_package_dependencies
+"""
+
+    subprocess.run(["bash", "-c", script], check=True, cwd=repo_root)
+    _cleanup_helper_state(repo_root)
+
+    assert not log_file.exists(), "checkPackageDependencies darf bei CHECK nicht aufgerufen werden."
+
+
 def test_register_package_dependencies_fails_on_conflict(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     setup_script = repo_root / "setup"
@@ -92,6 +152,7 @@ set -euo pipefail
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 source "{setup_script}"
 PACKAGE_DEPENDENCIES_FILE="{dependencies_file}"
+scriptAction=INSTALL
 
 checkPackageDependencies() {{
   printf 'check:%s\\n' "$1" >> "{log_file}"
