@@ -20,7 +20,7 @@ filesUpdated=false
 servicesUpdated=false
 dbusSettingsUpdated=false
 declare -a _dbus_settings_entries=()
-_dbus_settings_json=""
+_dbus_settings_multiline=""
 
 log() {
   local level="${1^^}"
@@ -657,30 +657,33 @@ build_dbus_settings_entries() {
   fi
   mapfile -t _dbus_settings_entries < "${list_path}"
 
-  local trimmed_entries=()
+  local sanitized_entries=()
   local entry=""
   for entry in "${_dbus_settings_entries[@]}"; do
-    local trimmed="${entry}"
-    trimmed="${trimmed#${trimmed%%[![:space:]]*}}"
-    trimmed="${trimmed%${trimmed##*[![:space:]]}}"
+    local trimmed=""
+    trimmed="$(trim_whitespace "${entry}")"
     if [[ -n "${trimmed}" ]]; then
-      trimmed_entries+=("${trimmed}")
+      sanitized_entries+=("${trimmed}")
     fi
   done
-  _dbus_settings_entries=("${trimmed_entries[@]}")
 
-  local json_payload="["
-  local first=true
-  for entry in "${_dbus_settings_entries[@]}"; do
-    if [[ "${first}" == true ]]; then
-      json_payload+="${entry}"
-      first=false
-    else
-      json_payload+=",${entry}"
-    fi
-  done
-  json_payload+="]"
-  _dbus_settings_json="${json_payload}"
+  _dbus_settings_entries=("${sanitized_entries[@]}")
+
+  if (( ${#_dbus_settings_entries[@]} > 0 )); then
+    _dbus_settings_multiline="$(printf '%s\n' "${_dbus_settings_entries[@]}")"
+  else
+    _dbus_settings_multiline=""
+  fi
+}
+
+write_dbus_settings_file() {
+  local output_path="$1"
+
+  if (( ${#_dbus_settings_entries[@]} > 0 )); then
+    printf '%s\n' "${_dbus_settings_entries[@]}" > "${output_path}"
+  else
+    : > "${output_path}"
+  fi
 }
 
 register_dbus_settings() {
@@ -692,7 +695,7 @@ register_dbus_settings() {
 
   build_dbus_settings_entries "${list_path}"
 
-  if [[ -z "${_dbus_settings_json}" ]]; then
+  if (( ${#_dbus_settings_entries[@]} == 0 )); then
     die "Es konnten keine D-Bus-Definitionen für die Registrierung generiert werden"
   fi
 
@@ -701,14 +704,14 @@ register_dbus_settings() {
     cp -f "${helper_json_file}" "${helper_json_backup}"
   fi
 
-  printf '%s\n' "${_dbus_settings_json}" > "${helper_json_file}"
+  write_dbus_settings_file "${helper_json_file}"
   helper_list_created=true
 
   if call_helper_function_if_available addAllDbusSettings; then
     registration_success=true
   elif call_helper_function_if_available addAllDbusSettings "${helper_json_file}"; then
     registration_success=true
-  elif call_helper_function_if_available addAllDbusSettings "${_dbus_settings_json}"; then
+  elif [[ -n "${_dbus_settings_multiline}" ]] && call_helper_function_if_available addAllDbusSettings "${_dbus_settings_multiline}"; then
     registration_success=true
   fi
 
@@ -740,8 +743,8 @@ unregister_dbus_settings() {
     cp -f "${helper_json_file}" "${helper_json_backup}"
   fi
 
-  if [[ -n "${_dbus_settings_json}" ]]; then
-    printf '%s\n' "${_dbus_settings_json}" > "${helper_json_file}"
+  if (( ${#_dbus_settings_entries[@]} > 0 )); then
+    write_dbus_settings_file "${helper_json_file}"
     helper_list_created=true
   fi
 
@@ -749,13 +752,13 @@ unregister_dbus_settings() {
     removal_success=true
   elif call_helper_function_if_available removeAllDbusSettings "${helper_json_file}"; then
     removal_success=true
-  elif [[ -n "${_dbus_settings_json}" ]] && call_helper_function_if_available removeAllDbusSettings "${_dbus_settings_json}"; then
+  elif [[ -n "${_dbus_settings_multiline}" ]] && call_helper_function_if_available removeAllDbusSettings "${_dbus_settings_multiline}"; then
     removal_success=true
   elif call_helper_function_if_available removeDbusSettings; then
     removal_success=true
   elif call_helper_function_if_available removeDbusSettings "${helper_json_file}"; then
     removal_success=true
-  elif [[ -n "${_dbus_settings_json}" ]] && call_helper_function_if_available removeDbusSettings "${_dbus_settings_json}"; then
+  elif [[ -n "${_dbus_settings_multiline}" ]] && call_helper_function_if_available removeDbusSettings "${_dbus_settings_multiline}"; then
     removal_success=true
   fi
 
