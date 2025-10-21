@@ -85,10 +85,10 @@ Damit lassen sich die Entscheidungen des Reglers transparent nachverfolgen.
 - Zusätzliche Laufzeitinformationen werden über das Python-Logging der Anwendung (`setup_logging` in `src/dplus_sim.py`) auf den Standardausgang geschrieben. Das zugehörige Log-Skript (`services/com.coyodude.dplussim/log/run`) leitet diese Ausgaben auf Zielsystemen wahlweise an den SetupHelper-Logpipe (`/data/SetupHelper/HelperResources/serviceLogPipe`) weiter oder – falls dieser nicht verfügbar ist – per `svlogd -tt` in das runit-Logverzeichnis des Dienstes (z. B. `/var/log/com.coyodude.dplussim/`). Verwenden Sie daher den SetupHelper-Logviewer bzw. lesen Sie die `current`-Datei im runit-Logordner, um Laufzeitereignisse nachzuverfolgen.
 
 ## Debug-Modus und Simulationstools
-- Im regulären Betrieb stehen ausschließlich produktionsrelevante Funktionen zur Verfügung. Debug-Features müssen explizit per Kommandozeilenparameter `--enable-debug` freigeschaltet werden.
-- Die DBus-Methode `InjectVoltageSample` liefert ohne aktivierten Debug-Modus einen Fehler zurück und kann somit nicht versehentlich in Produktionsumgebungen genutzt werden.
-- Die Waveform-Simulation über `--simulate-waveform` ist ausschließlich im Debug-Modus verfügbar. Wird die Option ohne `--enable-debug` verwendet, bricht der Dienst mit einer entsprechenden Fehlermeldung ab.
-- Der Debug-Modus ist für Test- und Entwicklungsszenarien gedacht und sollte auf Produktivsystemen deaktiviert bleiben.
+- Manuelle Spannungsinjektionen und die Sinus-Simulation sind ausschließlich für Entwicklungsszenarien vorgesehen. Setzen Sie hierfür die Umgebungsvariable `DPLUS_SIM_DEV_MODE=1` und starten Sie den Dienst zusätzlich mit `--enable-debug`.
+- Ohne gesetzten Entwicklungsmodus blockiert der Dienst jede D-Bus-Anfrage an `InjectVoltageSample` zuverlässig.
+- `--simulate-waveform` steht nur zur Verfügung, wenn `DPLUS_SIM_DEV_MODE` aktiv ist. Wird die Option ohne Entwicklungsmodus gesetzt, beendet der Argumentparser die Ausführung mit einer Fehlermeldung.
+- In Produktivumgebungen darf `DPLUS_SIM_DEV_MODE` nicht gesetzt werden. Somit bleiben ausschließlich die produktiven Funktionen aktiv.
 
 ## Troubleshooting
 | Problem | Mögliche Ursache | Lösung |

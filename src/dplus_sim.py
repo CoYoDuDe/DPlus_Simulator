@@ -108,6 +108,17 @@ RELAY_FUNCTION_TAG = "dplus-simulator"
 RELAY_FUNCTION_NEUTRAL = "none"
 
 
+DEV_FEATURE_FLAG_ENV_VAR = "DPLUS_SIM_DEV_MODE"
+_TRUE_ENV_VALUES: Set[str] = {"1", "true", "yes", "on"}
+
+
+def development_features_enabled() -> bool:
+    """Return ``True`` if privileged development helpers are enabled."""
+
+    value = os.getenv(DEV_FEATURE_FLAG_ENV_VAR, "").strip().lower()
+    return bool(value) and value in _TRUE_ENV_VALUES
+
+
 def normalize_relay_channel(channel: str) -> str:
     """Normalisiert Relay-Kanalnamen unabhängig von Groß-/Kleinschreibung."""
 
@@ -2827,6 +2838,15 @@ class DPlusSimService(ServiceInterface):
                 "InjectVoltageSample ist nur im Debug-Modus verfügbar. "
                 "Starten Sie den Dienst mit --enable-debug."
             )
+        if not development_features_enabled():
+            logging.getLogger("DPlusSimService").error(
+                "InjectVoltageSample wurde ohne gesetzte %s-Umgebungsvariable blockiert",
+                DEV_FEATURE_FLAG_ENV_VAR,
+            )
+            raise RuntimeError(
+                "Manuelle Spannungsinjektionen sind deaktiviert. "
+                f"Setzen Sie {DEV_FEATURE_FLAG_ENV_VAR}=1 für den Entwicklungsmodus."
+            )
         result = await self._controller.inject_voltage(float(voltage))
         return dbusify(result)
 
@@ -3313,7 +3333,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=float,
         default=0.0,
         metavar="AMP",
-        help="Aktiviert eine Sinus-Simulation mit gegebener Amplitude (nur Testzwecke)",
+        help=(
+            "Aktiviert eine Sinus-Simulation mit gegebener Amplitude (nur Entwicklung). "
+            f"Erfordert {DEV_FEATURE_FLAG_ENV_VAR}=1."
+        ),
     )
     parser.add_argument(
         "--log-level",
@@ -3325,9 +3348,22 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def validate_runtime_options(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     debug_enabled = bool(getattr(args, "enable_debug", False))
+    development_enabled = development_features_enabled()
     amplitude = float(getattr(args, "simulate_waveform", 0.0) or 0.0)
-    if amplitude > 0.0 and not debug_enabled:
-        parser.error("--simulate-waveform ist nur gemeinsam mit --enable-debug zulässig")
+    if amplitude > 0.0:
+        if not debug_enabled:
+            parser.error("--simulate-waveform ist nur gemeinsam mit --enable-debug zulässig")
+        if not development_enabled:
+            parser.error(
+                "--simulate-waveform erfordert den Entwicklungsmodus via "
+                f"{DEV_FEATURE_FLAG_ENV_VAR}=1"
+            )
+    if debug_enabled and not development_enabled:
+        logging.getLogger("DPlusSim").warning(
+            "--enable-debug wurde ohne gesetztes %s verwendet. "
+            "Manuelle Spannungsinjektionen bleiben deaktiviert.",
+            DEV_FEATURE_FLAG_ENV_VAR,
+        )
 
 
 def main(argv: Optional[list[str]] = None) -> int:
