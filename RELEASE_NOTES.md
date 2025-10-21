@@ -9,4 +9,7 @@
 ### Geändert
 - `packageDependencies` folgt nun dem SetupHelper-Format für Paketkonflikte und bleibt bewusst leer,
   da der DPlus Simulator keine zwingenden Paketabhängigkeiten erzwingt.
+- Der Installer ruft – sofern verfügbar – die offizielle `checkPackageDependencies`-Funktion des
+  SetupHelper auf und protokolliert andernfalls lediglich das Überspringen der Prüfung, damit auch
+  Installationen mit unveränderten Helper-Skripten störungsfrei durchlaufen.
 - Installer signalisiert SetupHelper nach Installations-, Deinstallations- und Statusläufen nun explizit über `endScript`, ob Dateien, Dienste oder D-Bus-Settings aktualisiert wurden; dadurch greifen automatische GUI-Neustarts bzw. Reboot-Aufforderungen, während eine Fallback-Implementierung lokale Tests weiterhin ohne SetupHelper ermöglicht.

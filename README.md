@@ -43,8 +43,11 @@ Die Installation wird nur gestartet, wenn folgende Voraussetzungen erfüllt sind
 
 Fehlt eine der Komponenten, bricht der Installer kontrolliert ab und verweist auf die erforderliche
 Voraussetzung. Das `packageDependencies`-Dokument bleibt bewusst leer, da der DPlus Simulator keine
-anderen SetupHelper-Pakete erzwingt. Optionale Erweiterungen (z. B. `gpiosetup`/`guimods` für den
-Relaisbetrieb) werden weiterhin in der Anwendung dokumentiert, ohne die Installation zu blockieren.
+anderen SetupHelper-Pakete erzwingt. Sobald SetupHelper verfügbar ist, ruft das Skript die offizielle
+`checkPackageDependencies`-Funktion mit dem hinterlegten Dokument auf. Läuft der Installer in einer
+Umgebung ohne Helper-Skripte, wird lediglich informativ protokolliert, dass keine Konfliktprüfung
+stattfindet. Optionale Erweiterungen (z. B. `gpiosetup`/`guimods` für den Relaisbetrieb) werden weiterhin
+in der Anwendung dokumentiert, ohne die Installation zu blockieren.
 
 ### Konfigurationspfade
 Die Konfiguration erfolgt über den Victron DBus (Service `com.victronenergy.settings`).
