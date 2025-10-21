@@ -678,99 +678,41 @@ build_dbus_settings_entries() {
 register_dbus_settings() {
   local list_path="${PROJECT_ROOT}/settingsList"
   local helper_json_file="${PROJECT_ROOT}/DbusSettingsList"
-  local temp_json_file=""
+  local helper_json_backup=""
+  local helper_list_created=false
+  local registration_success=false
+
   build_dbus_settings_entries "${list_path}"
 
+  if [[ -z "${_dbus_settings_json}" ]]; then
+    die "Es konnten keine D-Bus-Definitionen für die Registrierung generiert werden"
+  fi
+
   if [[ -f "${helper_json_file}" ]]; then
-    if call_helper_function_if_available addAllDbusSettingsFromFile "${helper_json_file}"; then
-      dbusSettingsUpdated=true
-      return
-    fi
-  elif [[ -n "${_dbus_settings_json}" ]]; then
-    temp_json_file="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.XXXXXX.json")"
-    printf '%s\n' "${_dbus_settings_json}" > "${temp_json_file}"
-    if call_helper_function_if_available addAllDbusSettingsFromFile "${temp_json_file}"; then
-      dbusSettingsUpdated=true
-      rm -f "${temp_json_file}"
-      return
-    fi
+    helper_json_backup="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.backup.XXXXXX")"
+    cp -f "${helper_json_file}" "${helper_json_backup}"
   fi
 
-  if [[ -n "${temp_json_file}" ]]; then
-    rm -f "${temp_json_file}"
+  printf '%s\n' "${_dbus_settings_json}" > "${helper_json_file}"
+  helper_list_created=true
+
+  if call_helper_function_if_available addAllDbusSettings; then
+    registration_success=true
+  elif call_helper_function_if_available addAllDbusSettings "${helper_json_file}"; then
+    registration_success=true
+  elif call_helper_function_if_available addAllDbusSettings "${_dbus_settings_json}"; then
+    registration_success=true
   fi
 
-  if call_helper_function_if_available addAllDbusSettingsFromFile "${list_path}"; then
+  if [[ -n "${helper_json_backup}" ]]; then
+    mv -f "${helper_json_backup}" "${helper_json_file}"
+  elif [[ "${helper_list_created}" == true ]]; then
+    rm -f "${helper_json_file}"
+  fi
+
+  if [[ "${registration_success}" == true ]]; then
     dbusSettingsUpdated=true
     return
-  fi
-
-  if declare -F addAllDbusSettings >/dev/null; then
-    local helper_list_backup=""
-    local helper_list_created=false
-
-    if [[ ${#_dbus_settings_entries[@]} -gt 0 ]]; then
-      if [[ -f "${helper_json_file}" ]]; then
-        helper_list_backup="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.backup.XXXXXX")"
-        cp -f "${helper_json_file}" "${helper_list_backup}"
-      fi
-      printf '%s\n' "${_dbus_settings_entries[@]}" > "${helper_json_file}"
-      helper_list_created=true
-    fi
-
-    if call_helper_function_if_available addAllDbusSettings; then
-      dbusSettingsUpdated=true
-      if [[ -n "${helper_list_backup}" ]]; then
-        mv -f "${helper_list_backup}" "${helper_json_file}"
-      elif [[ "${helper_list_created}" == true ]]; then
-        rm -f "${helper_json_file}"
-      fi
-      return
-    fi
-
-    if [[ -n "${helper_list_backup}" ]]; then
-      mv -f "${helper_list_backup}" "${helper_json_file}"
-    elif [[ "${helper_list_created}" == true ]]; then
-      rm -f "${helper_json_file}"
-    fi
-
-    local settings_list_output=""
-    if declare -F DbusSettingsList >/dev/null; then
-      set +e
-      settings_list_output="$(DbusSettingsList "${_dbus_settings_entries[@]}")"
-      local list_status=$?
-      set -e
-      if [[ ${list_status} -eq 0 && -n "${settings_list_output}" ]]; then
-        call_helper_function_if_available addAllDbusSettings "${settings_list_output}" && {
-          dbusSettingsUpdated=true
-          return
-        }
-      fi
-    fi
-
-    if [[ -n "${_dbus_settings_json}" ]]; then
-      if call_helper_function_if_available addAllDbusSettings "${_dbus_settings_json}"; then
-        dbusSettingsUpdated=true
-        return
-      fi
-    fi
-
-    if call_helper_function_if_available addAllDbusSettings "${list_path}"; then
-      dbusSettingsUpdated=true
-      return
-    fi
-
-    if call_helper_function_if_available addAllDbusSettings "${_dbus_settings_entries[@]}"; then
-      dbusSettingsUpdated=true
-      return
-    fi
-  fi
-
-  if declare -F helper_register_settings_with_metadata >/dev/null || declare -F helper_register_settings >/dev/null; then
-    if register_settings_definitions; then
-      dbusSettingsUpdated=true
-      return
-    fi
   fi
 
   die "SetupHelper stellt keine geeignete Funktion zum Registrieren der Einstellungen bereit"
@@ -778,76 +720,46 @@ register_dbus_settings() {
 
 unregister_dbus_settings() {
   local list_path="${PROJECT_ROOT}/settingsList"
+  local helper_json_file="${PROJECT_ROOT}/DbusSettingsList"
+  local helper_json_backup=""
+  local helper_list_created=false
+  local removal_success=false
+
   build_dbus_settings_entries "${list_path}"
 
-  if call_helper_function_if_available removeDbusSettingsFromFile "${list_path}"; then
+  if [[ -f "${helper_json_file}" ]]; then
+    helper_json_backup="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.backup.XXXXXX")"
+    cp -f "${helper_json_file}" "${helper_json_backup}"
+  fi
+
+  if [[ -n "${_dbus_settings_json}" ]]; then
+    printf '%s\n' "${_dbus_settings_json}" > "${helper_json_file}"
+    helper_list_created=true
+  fi
+
+  if call_helper_function_if_available removeAllDbusSettings; then
+    removal_success=true
+  elif call_helper_function_if_available removeAllDbusSettings "${helper_json_file}"; then
+    removal_success=true
+  elif [[ -n "${_dbus_settings_json}" ]] && call_helper_function_if_available removeAllDbusSettings "${_dbus_settings_json}"; then
+    removal_success=true
+  elif call_helper_function_if_available removeDbusSettings; then
+    removal_success=true
+  elif call_helper_function_if_available removeDbusSettings "${helper_json_file}"; then
+    removal_success=true
+  elif [[ -n "${_dbus_settings_json}" ]] && call_helper_function_if_available removeDbusSettings "${_dbus_settings_json}"; then
+    removal_success=true
+  fi
+
+  if [[ -n "${helper_json_backup}" ]]; then
+    mv -f "${helper_json_backup}" "${helper_json_file}"
+  elif [[ "${helper_list_created}" == true ]]; then
+    rm -f "${helper_json_file}"
+  fi
+
+  if [[ "${removal_success}" == true ]]; then
     dbusSettingsUpdated=true
     return
-  fi
-
-  local helper_json_file="${PROJECT_ROOT}/DbusSettingsList"
-
-  if declare -F removeAllDbusSettings >/dev/null; then
-    local helper_list_backup=""
-    local helper_list_created=false
-
-    if [[ ${#_dbus_settings_entries[@]} -gt 0 ]]; then
-      if [[ -f "${helper_json_file}" ]]; then
-        helper_list_backup="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.backup.XXXXXX")"
-        cp -f "${helper_json_file}" "${helper_list_backup}"
-      fi
-      printf '%s\n' "${_dbus_settings_entries[@]}" > "${helper_json_file}"
-      helper_list_created=true
-    fi
-
-    if call_helper_function_if_available removeAllDbusSettings; then
-      dbusSettingsUpdated=true
-      if [[ -n "${helper_list_backup}" ]]; then
-        mv -f "${helper_list_backup}" "${helper_json_file}"
-      elif [[ "${helper_list_created}" == true ]]; then
-        rm -f "${helper_json_file}"
-      fi
-      return
-    fi
-
-    if [[ -n "${helper_list_backup}" ]]; then
-      mv -f "${helper_list_backup}" "${helper_json_file}"
-    elif [[ "${helper_list_created}" == true ]]; then
-      rm -f "${helper_json_file}"
-    fi
-  fi
-
-  if declare -F removeDbusSettings >/dev/null; then
-    local settings_list_output=""
-    if declare -F DbusSettingsList >/dev/null; then
-      set +e
-      settings_list_output="$(DbusSettingsList "${_dbus_settings_entries[@]}")"
-      local list_status=$?
-      set -e
-      if [[ ${list_status} -eq 0 && -n "${settings_list_output}" ]]; then
-        call_helper_function_if_available removeDbusSettings "${settings_list_output}" && {
-          dbusSettingsUpdated=true
-          return
-        }
-      fi
-    fi
-
-    if call_helper_function_if_available removeDbusSettings "${list_path}"; then
-      dbusSettingsUpdated=true
-      return
-    fi
-
-    if call_helper_function_if_available removeDbusSettings "${_dbus_settings_entries[@]}"; then
-      dbusSettingsUpdated=true
-      return
-    fi
-  fi
-
-  if declare -F helper_unregister_settings >/dev/null; then
-    if helper_unregister_settings "${SETTINGS_BASE_PATH}"; then
-      dbusSettingsUpdated=true
-      return
-    fi
   fi
 
   log WARN "Einstellungsderegistrierung konnte nicht über SetupHelper durchgeführt werden"
@@ -892,69 +804,6 @@ register_package_dependencies() {
   else
     die "SetupHelper unterstützt das Registrieren von packageDependencies nicht"
   fi
-}
-
-register_settings_definitions() {
-  local -a settings_definitions=(
-    "/Settings/Devices/DPlusSim/GpioPin|i|17|GPIO-Pin, der die simulierte D+-Leitung schaltet."
-    "/Settings/Devices/DPlusSim/TargetVoltage|f|3.3|Zielspannung in Volt, die durch die Simulation angestrebt wird."
-    "/Settings/Devices/DPlusSim/Hysteresis|f|0.1|Hystereseband in Volt, bevor der GPIO neu geschaltet wird."
-    "/Settings/Devices/DPlusSim/ActivationDelaySeconds|f|2.0|Verzögerung in Sekunden, bevor der GPIO bei steigender Spannung eingeschaltet wird."
-    "/Settings/Devices/DPlusSim/DeactivationDelaySeconds|f|5.0|Verzögerung in Sekunden, bevor der GPIO bei fallender Spannung ausgeschaltet wird."
-    "/Settings/Devices/DPlusSim/OnVoltage|f|3.35|Spannung, ab der die D+-Simulation aktiviert werden soll."
-    "/Settings/Devices/DPlusSim/OffVoltage|f|3.25|Spannung, unter der die D+-Simulation deaktiviert wird."
-    "/Settings/Devices/DPlusSim/OnDelaySec|f|2.0|Verzögerung in Sekunden bis zum Einschalten, sobald alle Bedingungen erfüllt sind."
-    "/Settings/Devices/DPlusSim/OffDelaySec|f|5.0|Verzögerung in Sekunden bis zum Ausschalten, wenn die Bedingungen entfallen."
-    "/Settings/Devices/DPlusSim/UseIgnition|b|0|Aktiviert die Abhängigkeit vom Zündplus-Eingang."
-    "/Settings/Devices/DPlusSim/IgnitionGpio|i|4|GPIO-Pin, an dem das Zündplus-Signal eingelesen wird."
-    "/Settings/Devices/DPlusSim/IgnitionPull|s|down|Pull-Up/-Down-Konfiguration für den Zündplus-Eingang (up/down/none)."
-    "/Settings/Devices/DPlusSim/ForceOn|b|0|Erzwingt dauerhaft ein aktives D+-Signal."
-    "/Settings/Devices/DPlusSim/ForceOff|b|0|Erzwingt dauerhaft ein deaktiviertes D+-Signal."
-    "/Settings/Devices/DPlusSim/StatusPublishInterval|f|2.0|Intervall in Sekunden zur Veröffentlichung des Status über D-Bus-Signale."
-    "/Settings/Devices/DPlusSim/DbusBus|s|system|Zu verwendender D-Bus (system oder session)."
-    "/Settings/Devices/DPlusSim/ServicePath|s|com.victronenergy.system|Automatisch erkannter Dienst für die Starterspannung (schreibgeschützt; Änderungen werden überschrieben)."
-    "/Settings/Devices/DPlusSim/VoltagePath|s|/StarterVoltage|Schreibgeschützter Starterspannungs-Pfad (/StarterVoltage) des automatisch erkannten Dienstes."
-    "/Settings/Devices/DPlusSim/OutputMode|s|gpio|Steuerungsmodus für den D+-Ausgang (gpio oder relay)."
-    "/Settings/Devices/DPlusSim/RelayChannel|s|4brelays/0|Ausgewählter Relay-Kanal aus der gpiosetup-Konfiguration."
-  )
-
-  local metadata_payload=""
-  local fallback_payload=""
-
-  while IFS='|' read -r path type default desc; do
-    local fallback_default="${default}"
-    local metadata_default="${default}"
-
-    if [[ "${type}" == "b" ]]; then
-      case "${default}" in
-        1|true|TRUE)
-          fallback_default="1"
-          metadata_default="true"
-          ;;
-        0|false|FALSE|'')
-          fallback_default="0"
-          metadata_default="false"
-          ;;
-        *)
-          die "Ungültiger Standardwert ${default} für boolesche Einstellung ${path}"
-          ;;
-      esac
-    fi
-
-    metadata_payload+="${path}|${type}|${metadata_default}|${desc}"$'\n'
-    fallback_payload+="${path} ${type} ${fallback_default}"$'\n'
-  done < <(printf '%s\n' "${settings_definitions[@]}")
-
-  if declare -F helper_register_settings_with_metadata >/dev/null; then
-    helper_register_settings_with_metadata <<EOF
-${metadata_payload%$'\n'}
-EOF
-    return
-  fi
-
-  helper_register_settings <<EOF
-${fallback_payload%$'\n'}
-EOF
 }
 
 

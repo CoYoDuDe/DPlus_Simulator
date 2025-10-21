@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -23,6 +24,7 @@ def test_unregister_dbus_settings_uses_remove_all(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     setup_script = repo_root / "setup"
     log_file = tmp_path / "helper_calls.log"
+    payload_file = tmp_path / "dbus_payload.json"
     dbus_list_file = repo_root / "DbusSettingsList"
     preexisting_content = dbus_list_file.read_bytes() if dbus_list_file.exists() else None
     file_exists_after: bool | None = None
@@ -34,20 +36,19 @@ def test_unregister_dbus_settings_uses_remove_all(tmp_path: Path) -> None:
 set -euo pipefail
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 source \"{setup_script}\"
-removeDbusSettingsFromFile() {{
-  printf 'from_file:%s\\n' \"$1\" >> \"{log_file}\"
-  return 1
-}}
 removeDbusSettings() {{
-  printf 'fallback:%s\\n' \"$*\" >> \"{log_file}\"
+  printf 'remove|%s|%s\\n' "$#" "$*" >> \"{log_file}\"
   return 1
 }}
 removeAllDbusSettings() {{
+  local argc="$#"
+  local args="$*"
+  local state="missing"
   if [[ -f \"{dbus_list_file}\" ]]; then
-    printf 'remove_all:present\\n' >> \"{log_file}\"
-  else
-    printf 'remove_all:missing\\n' >> \"{log_file}\"
+    state="present"
+    cp \"{dbus_list_file}\" \"{payload_file}\"
   fi
+  printf 'remove_all|%s|%s|%s\\n' "${{argc}}" "${{args}}" "${{state}}" >> \"{log_file}\"
   return 0
 }}
 unregister_dbus_settings
@@ -57,11 +58,24 @@ unregister_dbus_settings
         file_exists_after = dbus_list_file.exists()
         log_lines = log_file.read_text(encoding="utf-8").splitlines()
 
-        assert "remove_all:present" in log_lines, "removeAllDbusSettings wurde nicht aufgerufen."
-        assert not any(line.startswith("fallback:") for line in log_lines), (
-            "removeDbusSettings sollte ohne Parameter nicht aufgerufen werden."
+        remove_all_calls = [line for line in log_lines if line.startswith("remove_all|")]
+        assert remove_all_calls, "removeAllDbusSettings wurde nicht aufgerufen."
+
+        first_call = remove_all_calls[0].split("|")
+        assert first_call[3] == "present", "DbusSettingsList war während removeAllDbusSettings nicht vorhanden."
+        argc = int(first_call[1])
+        assert argc in {0, 1}, "removeAllDbusSettings wurde mit unerwarteter Argumentanzahl aufgerufen."
+
+        assert not any(line.startswith("remove|") for line in log_lines), (
+            "removeDbusSettings sollte in diesem Pfad nicht benötigt werden."
         )
+
         assert file_exists_after is False, "Die temporäre DbusSettingsList-Datei wurde nicht entfernt."
+
+        payload_text = payload_file.read_text(encoding="utf-8").strip()
+        assert payload_text, "Es wurde keine JSON-Payload für removeAllDbusSettings erzeugt."
+        payload = json.loads(payload_text)
+        assert isinstance(payload, list) and payload, "Die entfernte Payload darf nicht leer sein."
     finally:
         _cleanup_helper_state(repo_root)
         if preexisting_content is not None:
@@ -77,6 +91,7 @@ def test_perform_uninstall_reports_end_script_flags(tmp_path: Path) -> None:
     install_root.mkdir()
     (install_root / "marker").touch()
     log_file = tmp_path / "end_script.log"
+    payload_file = tmp_path / "uninstall_payload.json"
 
     script = f"""
 set -euo pipefail
@@ -90,17 +105,20 @@ remove_service() {{
   return 0
 }}
 
-removeDbusSettingsFromFile() {{
-  return 1
-}}
-
 removeDbusSettings() {{
-  printf 'remove:%s\\n' \"$*\" >> \"{log_file}\"
+  printf 'remove|%s|%s\\n' "$#" "$*" >> \"{log_file}\"
   return 1
 }}
 
 removeAllDbusSettings() {{
-  printf 'remove_all\\n' >> \"{log_file}\"
+  local argc="$#"
+  local args="$*"
+  local state="missing"
+  if [[ -f \"{repo_root}/DbusSettingsList\" ]]; then
+    state="present"
+    cp \"{repo_root}/DbusSettingsList\" \"{payload_file}\"
+  fi
+  printf 'remove_all|%s|%s|%s\\n' "${{argc}}" "${{args}}" "${{state}}" >> \"{log_file}\"
   return 0
 }}
 
@@ -118,7 +136,26 @@ perform_uninstall
     assert not install_root.exists(), "Installationsverzeichnis wurde nicht entfernt."
 
     log_lines = log_file.read_text(encoding="utf-8").splitlines()
-    assert "remove_all" in log_lines, "removeAllDbusSettings wurde nicht verwendet."
+    remove_all_calls = [line for line in log_lines if line.startswith("remove_all|")]
+    assert remove_all_calls, "removeAllDbusSettings wurde nicht verwendet."
+
+    first_call = remove_all_calls[0].split("|")
+    assert first_call[3] == "present", "DbusSettingsList war während removeAllDbusSettings nicht vorhanden."
+    argc = int(first_call[1])
+    assert argc in {0, 1}, "removeAllDbusSettings wurde mit unerwarteter Argumentanzahl aufgerufen."
+
+    assert not any(line.startswith("remove|") for line in log_lines), (
+        "removeDbusSettings sollte während der Deinstallation nicht benötigt werden."
+    )
+
+    dbus_list_file = repo_root / "DbusSettingsList"
+    assert not dbus_list_file.exists(), "Die temporäre DbusSettingsList-Datei wurde nicht entfernt."
+
+    payload_text = payload_file.read_text(encoding="utf-8").strip()
+    assert payload_text, "Es wurde keine JSON-Payload für removeAllDbusSettings erzeugt."
+    payload = json.loads(payload_text)
+    assert isinstance(payload, list) and payload, "Die entfernte Payload darf nicht leer sein."
+
     assert f"endScript:INSTALL_FILES INSTALL_SERVICE ADD_DBUS_SETTINGS" in log_lines, (
         "endScript wurde nicht mit den erwarteten Flags aufgerufen."
     )

@@ -46,24 +46,51 @@ Voraussetzung. Das `packageDependencies`-Dokument bleibt bewusst leer, da der DP
 anderen SetupHelper-Pakete erzwingt. Optionale Erweiterungen (z. B. `gpiosetup`/`guimods` für den
 Relaisbetrieb) werden weiterhin in der Anwendung dokumentiert, ohne die Installation zu blockieren.
 
+### SetupHelper-Kompatibilität und Registrierung der D-Bus-Settings
+
+- Der Installer setzt vollständig auf die offiziellen SetupHelper-Funktionen `addAllDbusSettings`,
+  `removeAllDbusSettings` und `removeDbusSettings`. Sobald externe Helper-Ressourcen nicht verfügbar
+  sind, aktiviert das Setup-Skript automatisch den integrierten Fallback mit identischen
+  Schnittstellen.
+- Die D-Bus-Definitionen werden zur Laufzeit aus `settingsList` generiert, als JSON-Array in der
+  Projektwurzel unter `DbusSettingsList` zwischengespeichert und nach erfolgreichem
+  Registrierungs- bzw. Deregistrierungslauf wieder entfernt. Dadurch liest der SetupHelper die
+  Daten identisch zu seinen Beispiel-Add-ons ein, ohne dass zusätzliche Helper-Funktionen wie
+  `addAllDbusSettingsFromFile` benötigt werden.
+- Der Installer protokolliert weiterhin über `endScript`, ob Dateien, Dienste und D-Bus-Settings
+  geändert wurden, sodass GUI-Neustarts oder Reboot-Aufforderungen durch den SetupHelper korrekt
+  ausgelöst werden.
+
 ### Konfigurationspfade
 Die Konfiguration erfolgt über den Victron DBus (Service `com.victronenergy.settings`).
 Die wichtigsten Schlüssel im Gerätekontext `Settings/Devices/DPlusSim` sind:
 
-| Schlüssel | Beschreibung |
-|-----------|---------------|
-| `GpioPin` | GPIO-Ausgang, der das D+-Signal schaltet. |
-| `TargetVoltage` / `Hysteresis` | Legacy-Parameter für symmetrische Schaltschwellen (werden weiterhin ausgewertet). |
-| `OnVoltage` / `OffVoltage` | Getrennte Spannungen zum Ein- bzw. Ausschalten. |
-| `OnDelaySec` / `OffDelaySec` | Verzögerungen für das Ein- und Ausschalten. |
-| `UseIgnition` / `IgnitionGpio` | Aktiviert den Zündplus-Eingang und legt den Eingangspin fest. |
-| `IgnitionPull` | Legt den Pull-Up/-Down-Modus für den Zündplus-Eingang fest (`up`, `down`, `none`). |
-| `OutputMode` | Steuert, ob die Simulation einen GPIO (`gpio`) oder ein Relais (`relay`) nutzt. |
-| `RelayChannel` | Ausgewählter gpiosetup-Relay-Kanal (z. B. `4brelays/0`), exklusiv vom Simulator belegt. |
-| `ForceOn` / `ForceOff` | Erzwingt dauerhaft ein aktiviertes bzw. deaktiviertes Ausgangssignal. |
-| `StatusPublishInterval` | Aktualisierungsintervall der Statusmeldungen. |
-| `ServicePath` | Automatisch erkannter Dienst für die Starterspannung (wird vom Simulator gesetzt und kann nicht überschrieben werden). |
-| `VoltagePath` | Vom Simulator gesetzter Starterspannungs-Pfad (`/StarterVoltage`, schreibgeschützt). |
+| Schlüssel | Typ | Standardwert | Beschreibung |
+|-----------|-----|--------------|---------------|
+| `GpioPin` | Ganzzahl (`i`) | `17` | GPIO-Ausgang, der das D+-Signal schaltet. |
+| `TargetVoltage` | Fließkommazahl (`d`) | `3.3` | Legacy-Parameter für symmetrische Schaltschwellen (werden weiterhin ausgewertet). |
+| `Hysteresis` | Fließkommazahl (`d`) | `0.1` | Hystereseband in Volt, bevor der GPIO neu geschaltet wird. |
+| `ActivationDelaySeconds` | Fließkommazahl (`d`) | `2.0` | Verzögerung in Sekunden, bevor der GPIO bei steigender Spannung eingeschaltet wird. |
+| `DeactivationDelaySeconds` | Fließkommazahl (`d`) | `5.0` | Verzögerung in Sekunden, bevor der GPIO bei fallender Spannung ausgeschaltet wird. |
+| `OnVoltage` | Fließkommazahl (`d`) | `3.35` | Spannung, ab der die D+-Simulation aktiviert werden soll. |
+| `OffVoltage` | Fließkommazahl (`d`) | `3.25` | Spannung, unter der die D+-Simulation deaktiviert wird. |
+| `OnDelaySec` | Fließkommazahl (`d`) | `2.0` | Verzögerung bis zum Einschalten, sobald alle Bedingungen erfüllt sind. |
+| `OffDelaySec` | Fließkommazahl (`d`) | `5.0` | Verzögerung bis zum Ausschalten, wenn die Bedingungen entfallen. |
+| `UseIgnition` | Boolesch (`b`) | `false` | Aktiviert die Abhängigkeit vom Zündplus-Eingang. |
+| `IgnitionGpio` | Ganzzahl (`i`) | `4` | GPIO-Pin, an dem das Zündplus-Signal eingelesen wird. |
+| `IgnitionPull` | Text (`s`) | `"down"` | Pull-Up/-Down-Konfiguration für den Zündplus-Eingang (`up`, `down`, `none`). |
+| `OutputMode` | Text (`s`) | `"gpio"` | Steuert, ob die Simulation einen GPIO (`gpio`) oder ein Relais (`relay`) nutzt. |
+| `RelayChannel` | Text (`s`) | `"4brelays/0"` | Ausgewählter gpiosetup-Relay-Kanal (z. B. `4brelays/0`), exklusiv vom Simulator belegt. |
+| `ForceOn` | Boolesch (`b`) | `false` | Erzwingt dauerhaft ein aktiviertes Ausgangssignal. |
+| `ForceOff` | Boolesch (`b`) | `false` | Erzwingt dauerhaft ein deaktiviertes Ausgangssignal. |
+| `StatusPublishInterval` | Fließkommazahl (`d`) | `2.0` | Aktualisierungsintervall der Statusmeldungen. |
+| `DbusBus` | Text (`s`) | `"system"` | Zu verwendender D-Bus (`system` oder `session`). |
+| `ServicePath` | Text (`s`) | `"com.victronenergy.system"` | Automatisch erkannter Dienst für die Starterspannung (wird vom Simulator gesetzt und kann nicht überschrieben werden). |
+| `VoltagePath` | Text (`s`) | `"/StarterVoltage"` | Vom Simulator gesetzter Starterspannungs-Pfad (`/StarterVoltage`, schreibgeschützt). |
+
+> **Hinweis:** Die Typ-Kürzel entsprechen den SetupHelper-Spezifikationen (`i` = Integer,
+> `d` = Double, `b` = Boolesch, `s` = String). Änderungen an den Standardwerten sollten über den
+> Victron Settings-Service erfolgen, damit der Simulator die Werte persistent synchronisieren kann.
 
 Auf GX-Geräten steht auf der Einstellungsseite des D+-Simulators eine Auswahl aller
 gefundenen Dienste mit Starterspannung zur Verfügung. Wird ein Eintrag ausgewählt, setzt
