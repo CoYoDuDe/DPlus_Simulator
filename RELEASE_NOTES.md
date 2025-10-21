@@ -12,6 +12,8 @@
 - Der Installer ruft – sofern verfügbar – die offizielle `checkPackageDependencies`-Funktion des
   SetupHelper auf und protokolliert andernfalls lediglich das Überspringen der Prüfung, damit auch
   Installationen mit unveränderten Helper-Skripten störungsfrei durchlaufen.
+- Die Abhängigkeitsprüfung läuft nur noch bei tatsächlichen Installationen; Deinstallations- und
+  Statusläufe überspringen `checkPackageDependencies`, um Bereinigungen nicht zu blockieren.
 - Installer signalisiert SetupHelper nach Installations-, Deinstallations- und Statusläufen nun explizit über `endScript`, ob Dateien, Dienste oder D-Bus-Settings aktualisiert wurden; dadurch greifen automatische GUI-Neustarts bzw. Reboot-Aufforderungen, während eine Fallback-Implementierung lokale Tests weiterhin ohne SetupHelper ermöglicht.
 - Registrierung und Deregistrierung der D-Bus-Settings verwenden ausschließlich `addAllDbusSettings`, `removeAllDbusSettings` und `removeDbusSettings`. Die JSON-Payload wird zur Laufzeit erzeugt, kurzzeitig in `DbusSettingsList` abgelegt und nach erfolgreichem Helper-Aufruf wieder entfernt, wodurch der Ablauf mit den offiziellen SetupHelper-Beispielen identisch bleibt.
 

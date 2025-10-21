@@ -15,6 +15,7 @@ REQUIRED_SETUP_HELPER_VERSION="8.10"
 SETUP_HELPER_DETECTED_ROOT=""
 SETUP_HELPER_VERSION_RAW=""
 SETUP_HELPER_VERSION_NORMALIZED=""
+RESOLVED_CLI_ACTION=""
 
 filesUpdated=false
 servicesUpdated=false
@@ -795,6 +796,36 @@ service_is_up() {
 }
 
 register_package_dependencies() {
+  local resolved_action="${scriptAction:-}"
+
+  if [[ -z "${resolved_action}" ]]; then
+    case "${RESOLVED_CLI_ACTION:-}" in
+      install|INSTALL)
+        resolved_action="INSTALL"
+        ;;
+      uninstall|UNINSTALL)
+        resolved_action="UNINSTALL"
+        ;;
+      status|check|STATUS)
+        resolved_action="CHECK"
+        ;;
+    esac
+  fi
+
+  local normalized_action=""
+  if [[ -n "${resolved_action}" ]]; then
+    normalized_action="${resolved_action^^}"
+  fi
+
+  if [[ "${normalized_action}" != "INSTALL" ]]; then
+    if [[ -n "${normalized_action}" ]]; then
+      log INFO "Überspringe packageDependencies-Prüfung (Aktion ${normalized_action})"
+    else
+      log INFO "Überspringe packageDependencies-Prüfung (keine Installationsaktion erkannt)"
+    fi
+    return
+  fi
+
   if [[ ! -f "${PACKAGE_DEPENDENCIES_FILE}" ]]; then
     log WARN "packageDependencies-Datei fehlt, überspringe Registrierung"
     return
@@ -990,6 +1021,25 @@ main() {
   fi
 
   scriptAction="${helper_action}"
+
+  if [[ -n "${normalized_cli}" ]]; then
+    RESOLVED_CLI_ACTION="${normalized_cli}"
+  else
+    case "${scriptAction}" in
+      INSTALL)
+        RESOLVED_CLI_ACTION="install"
+        ;;
+      UNINSTALL)
+        RESOLVED_CLI_ACTION="uninstall"
+        ;;
+      CHECK)
+        RESOLVED_CLI_ACTION="status"
+        ;;
+      *)
+        RESOLVED_CLI_ACTION=""
+        ;;
+    esac
+  fi
 
   source_helper_resources
 
