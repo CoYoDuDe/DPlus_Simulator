@@ -892,9 +892,11 @@ register_package_dependencies() {
   local status=$?
   if (( status == 127 )); then
     log INFO "SetupHelper stellt keine Funktion checkPackageDependencies bereit; überspringe packageDependencies-Prüfung"
-  else
-    log WARN "checkPackageDependencies konnte nicht erfolgreich ausgeführt werden (Status ${status}); überspringe packageDependencies-Prüfung"
+    return 0
   fi
+
+  log WARN "checkPackageDependencies konnte nicht erfolgreich ausgeführt werden (Status ${status}); Installation wird abgebrochen"
+  return ${status}
 }
 
 register_settings_definitions() {
