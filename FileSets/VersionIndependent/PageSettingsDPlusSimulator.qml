@@ -705,8 +705,8 @@ MbPage {
 
                 MbItemText {
                         text: starterVoltageScanFailed ?
-                                qsTr("Keine Dienste mit /StarterVoltage gefunden. Bitte Pfade manuell eintragen.") :
-                                qsTr("Wähle den Dienst, der /StarterVoltage bereitstellt. Die Felder darunter werden automatisch gefüllt und lassen sich anschließend bei Bedarf anpassen.")
+                                qsTr("Keine Dienste mit /StarterVoltage gefunden. Bitte Starter-Bus-Verkabelung sowie die Konfiguration von System- oder BMV-/SmartShunt-Diensten prüfen. Ohne gültige Quelle bleibt der Simulator gestoppt; kontaktieren Sie den Support, wenn weiterhin keine Starterspannung gemeldet wird.") :
+                                qsTr("Wähle den Dienst, der /StarterVoltage bereitstellt. Die Felder darunter werden automatisch gesetzt und sind schreibgeschützt, damit der erkannte Pfad erhalten bleibt.")
                         wrapMode: Text.WordWrap
                 }
 
@@ -753,7 +753,7 @@ MbPage {
                 }
 
                 MbItemText {
-                        text: qsTr("⚠️ Warnung: Der ausgewählte Dienst liefert keine Starterspannung.")
+                        text: qsTr("⚠️ Warnung: Der ausgewählte Dienst liefert keine Starterspannung. Bitte Verkabelung, Messgeräte (z. B. BMV/SmartShunt) und den laufenden Venus-OS-Dienst prüfen.")
                         wrapMode: Text.WordWrap
                         show: starterVoltageSelection.length > 0 && !starterVoltageHasValue
                 }
@@ -763,12 +763,7 @@ MbPage {
                         description: qsTr("DBus-Bus")
                         item.bind: settingsPath("/DbusBus")
                         maximumLength: 40
-                        onEditDone: {
-                                var value = newValue ? newValue.toString().trim() : ""
-                                if (item && item.setValue)
-                                        item.setValue(value)
-                                updateStarterVoltageSelectionFromSettings()
-                        }
+                        enabled: false
                 }
 
                 MbEditBox {
@@ -776,12 +771,7 @@ MbPage {
                         description: qsTr("Service-Pfad")
                         item.bind: settingsPath("/ServicePath")
                         maximumLength: 80
-                        onEditDone: {
-                                var value = newValue ? newValue.toString().trim() : ""
-                                if (item && item.setValue)
-                                        item.setValue(value)
-                                updateStarterVoltageSelectionFromSettings()
-                        }
+                        enabled: false
                 }
 
                 MbEditBox {
@@ -789,12 +779,7 @@ MbPage {
                         description: qsTr("Spannungspfad")
                         item.bind: settingsPath("/VoltagePath")
                         maximumLength: 80
-                        onEditDone: {
-                                var value = newValue ? newValue.toString().trim() : ""
-                                if (item && item.setValue)
-                                        item.setValue(value)
-                                refreshStarterVoltageValidation()
-                        }
+                        enabled: false
                 }
 
                 Connections {

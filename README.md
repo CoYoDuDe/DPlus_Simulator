@@ -40,15 +40,17 @@ Die wichtigsten Schlüssel im Gerätekontext `Settings/Devices/DPlusSim` sind:
 | `RelayChannel` | Ausgewählter gpiosetup-Relay-Kanal (z. B. `4brelays/0`), exklusiv vom Simulator belegt. |
 | `ForceOn` / `ForceOff` | Erzwingt dauerhaft ein aktiviertes bzw. deaktiviertes Ausgangssignal. |
 | `StatusPublishInterval` | Aktualisierungsintervall der Statusmeldungen. |
-| `ServicePath` | Automatisch erkannter Dienst für die Starterspannung (schreibgeschützt). |
-| `VoltagePath` | Schreibgeschützter Starterspannungs-Pfad (`/StarterVoltage`). |
+| `ServicePath` | Automatisch erkannter Dienst für die Starterspannung (wird vom Simulator gesetzt und kann nicht überschrieben werden). |
+| `VoltagePath` | Vom Simulator gesetzter Starterspannungs-Pfad (`/StarterVoltage`, schreibgeschützt). |
 
 Auf GX-Geräten steht auf der Einstellungsseite des D+-Simulators eine Auswahl aller
 gefundenen Dienste mit Starterspannung zur Verfügung. Wird ein Eintrag ausgewählt, setzt
 die Oberfläche `DbusBus`, `ServicePath` und `VoltagePath` automatisch auf die
-Standardwerte des Dienstes. Die Eingabefelder bleiben weiterhin editierbar, sodass eigene
-Pfade möglich sind. Erkennt das System keinen Dienst mit `/StarterVoltage`, zeigt die
-Seite einen Hinweis an und fordert zur manuellen Eingabe auf.
+Standardwerte des Dienstes. Die Felder werden ausschließlich zur Anzeige genutzt und
+bleiben schreibgeschützt, damit der automatisch ermittelte Pfad nicht überschrieben wird.
+Erkennt das System keinen Dienst mit `/StarterVoltage`, weist die Seite darauf hin, die
+Verkabelung sowie die Konfiguration von System- oder BMV-/SmartShunt-Diensten zu prüfen
+und bei anhaltenden Problemen den Support zu kontaktieren.
 
 Alle Werte lassen sich über den DBus-Explorer oder per `dbus-spy` anpassen. Änderungen werden sofort vom Dienst übernommen und – dank `SettingsDevice` – dauerhaft im `com.victronenergy.settings`-Baum hinterlegt.
 
