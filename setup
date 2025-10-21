@@ -11,6 +11,11 @@ HELPER_RESOURCE="${HELPER_RESOURCE:-${DEFAULT_HELPER_INCLUDE}}"
 SETTINGS_BASE_PATH="/Settings/Devices/DPlusSim"
 PACKAGE_DEPENDENCIES_FILE="${PROJECT_ROOT}/packageDependencies"
 
+REQUIRED_SETUP_HELPER_VERSION="8.10"
+SETUP_HELPER_DETECTED_ROOT=""
+SETUP_HELPER_VERSION_RAW=""
+SETUP_HELPER_VERSION_NORMALIZED=""
+
 filesUpdated=false
 servicesUpdated=false
 dbusSettingsUpdated=false
@@ -30,6 +35,216 @@ log() {
 die() {
   log ERROR "$*"
   exit 1
+}
+
+trim_whitespace() {
+  local value="${1:-}"
+  value="${value#${value%%[![:space:]]*}}"
+  value="${value%${value##*[![:space:]]}}"
+  printf '%s' "${value}"
+}
+
+normalize_version_string() {
+  local raw="$(trim_whitespace "${1:-}")"
+  raw="${raw#v}"
+  raw="${raw#V}"
+  raw="${raw%%[^0-9.]*}"
+  raw="$(trim_whitespace "${raw}")"
+  printf '%s' "${raw}"
+}
+
+resolve_setup_helper_root_from_candidate() {
+  local candidate="$1"
+  local base=""
+
+  if [[ -z "${candidate}" ]]; then
+    return 1
+  fi
+
+  if [[ -f "${candidate}" ]]; then
+    base="$(cd "$(dirname "${candidate}")" && pwd -P 2>/dev/null)" || return 1
+  else
+    base="$(cd "${candidate}" && pwd -P 2>/dev/null)" || return 1
+  fi
+
+  if [[ -z "${base}" ]]; then
+    return 1
+  fi
+
+  if [[ "${base##*/}" == "HelperResources" ]]; then
+    base="$(cd "${base}/.." && pwd -P 2>/dev/null)" || return 1
+  fi
+
+  if [[ -n "${base}" ]]; then
+    printf '%s\n' "${base}"
+    return 0
+  fi
+
+  return 1
+}
+
+remember_setup_helper_root() {
+  local candidate="$1"
+  local resolved=""
+
+  if [[ -z "${candidate}" ]]; then
+    return
+  fi
+
+  if resolved="$(resolve_setup_helper_root_from_candidate "${candidate}")"; then
+    if [[ -n "${resolved}" ]]; then
+      SETUP_HELPER_DETECTED_ROOT="${resolved}"
+    fi
+  fi
+}
+
+detect_setuphelper_version() {
+  local -a version_candidates=()
+  local helper_cmd=""
+  local candidate=""
+
+  if [[ -n "${SETUP_HELPER_DETECTED_ROOT:-}" ]]; then
+    version_candidates+=("${SETUP_HELPER_DETECTED_ROOT}/version")
+  fi
+
+  for helper_cmd in setuphelper SetupHelper helperctl; do
+    if command -v "${helper_cmd}" >/dev/null 2>&1; then
+      local helper_bin=""
+      helper_bin="$(command -v "${helper_cmd}")"
+      local helper_root=""
+      helper_root="$(cd "$(dirname "${helper_bin}")/.." && pwd -P 2>/dev/null)" || helper_root=""
+      if [[ -n "${helper_root}" ]]; then
+        version_candidates+=("${helper_root}/version")
+      fi
+    fi
+  done
+
+  version_candidates+=(
+    "/data/SetupHelper/version"
+    "/opt/venus/SetupHelper/version"
+    "/opt/venusOS/SetupHelper/version"
+    "/usr/share/SetupHelper/version"
+    "${PROJECT_ROOT}/SetupHelper/version"
+  )
+
+  for candidate in "${version_candidates[@]}"; do
+    [[ -z "${candidate}" ]] && continue
+
+    if [[ -f "${candidate}" ]]; then
+      local raw_version
+      raw_version="$(<"${candidate}")"
+      raw_version="${raw_version//$'\r'/}"
+      raw_version="${raw_version//$'\n'/}"
+      raw_version="$(trim_whitespace "${raw_version}")"
+
+      if [[ -n "${raw_version}" ]]; then
+        SETUP_HELPER_VERSION_RAW="${raw_version}"
+        local normalized=""
+        normalized="$(normalize_version_string "${raw_version}")"
+        if [[ -n "${normalized}" ]]; then
+          SETUP_HELPER_VERSION_NORMALIZED="${normalized}"
+          return 0
+        fi
+      fi
+    fi
+  done
+
+  return 1
+}
+
+version_ge() {
+  local current="$1"
+  local required="$2"
+  local IFS='.'
+  local -a current_parts=()
+  local -a required_parts=()
+
+  read -r -a current_parts <<< "${current}"
+  read -r -a required_parts <<< "${required}"
+
+  local max_len="${#current_parts[@]}"
+  if (( ${#required_parts[@]} > max_len )); then
+    max_len="${#required_parts[@]}"
+  fi
+
+  local idx
+  for (( idx = 0; idx < max_len; idx++ )); do
+    local current_value="${current_parts[idx]:-0}"
+    local required_value="${required_parts[idx]:-0}"
+
+    current_value="${current_value//[^0-9]/}"
+    required_value="${required_value//[^0-9]/}"
+
+    if (( 10#${current_value:-0} > 10#${required_value:-0} )); then
+      return 0
+    fi
+
+    if (( 10#${current_value:-0} < 10#${required_value:-0} )); then
+      return 1
+    fi
+  done
+
+  return 0
+}
+
+require_setuphelper_version() {
+  local required_version="$1"
+
+  if [[ -z "${required_version}" ]]; then
+    return
+  fi
+
+  if ! detect_setuphelper_version; then
+    die "SetupHelper-Version konnte nicht ermittelt werden. Bitte installieren Sie SetupHelper >= ${required_version}."
+  fi
+
+  if [[ -z "${SETUP_HELPER_VERSION_NORMALIZED}" ]]; then
+    die "SetupHelper-Version konnte nicht interpretiert werden."
+  fi
+
+  if ! version_ge "${SETUP_HELPER_VERSION_NORMALIZED}" "${required_version}"; then
+    die "Gefundene SetupHelper-Version ${SETUP_HELPER_VERSION_RAW:-${SETUP_HELPER_VERSION_NORMALIZED}} ist kleiner als erforderlich (${required_version})."
+  fi
+
+  log INFO "SetupHelper-Version ${SETUP_HELPER_VERSION_RAW:-${SETUP_HELPER_VERSION_NORMALIZED}} erfüllt die Mindestanforderung ${required_version}"
+}
+
+require_python3() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    die "python3 ist nicht installiert. Bitte installieren Sie python3, bevor Sie fortfahren."
+  fi
+}
+
+require_python_module() {
+  local module_name="$1"
+
+  if [[ -z "${module_name}" ]]; then
+    return
+  fi
+
+  set +e
+  local output=""
+  output="$(python3 - "${module_name}" <<'PY'
+import importlib
+import sys
+
+module_name = sys.argv[1]
+
+try:
+    importlib.import_module(module_name)
+except Exception as exc:  # pragma: no cover - best effort logging
+    raise SystemExit(str(exc))
+PY
+)"
+  local status=$?
+  set -e
+
+  if (( status != 0 )); then
+    if [[ -n "${output}" ]]; then
+      log ERROR "python3 -c 'import ${module_name}' fehlgeschlagen: ${output}"
+    fi
+    die "Das Python-Modul ${module_name} ist nicht verfügbar. Installieren Sie die Komponente und versuchen Sie es erneut."
+  fi
 }
 
 copy_tree() {
@@ -278,6 +493,8 @@ source_helper_resources() {
   local -a search_candidates=()
   local candidate=""
 
+  SETUP_HELPER_DETECTED_ROOT=""
+
   if [[ -n "${SETUP_HELPER_ROOT:-}" ]]; then
     if [[ -d "${SETUP_HELPER_ROOT}" ]]; then
       search_candidates+=("${SETUP_HELPER_ROOT}/HelperResources")
@@ -315,19 +532,23 @@ source_helper_resources() {
     [[ -z "${candidate}" ]] && continue
 
     if [[ -f "${candidate}" && -r "${candidate}" ]]; then
+      remember_setup_helper_root "${candidate}"
       # shellcheck disable=SC1090
       source "${candidate}"
       return
     fi
 
     if [[ -d "${candidate}" ]]; then
+      remember_setup_helper_root "${candidate}"
       if [[ -r "${candidate}/forSetupScript" ]]; then
+        remember_setup_helper_root "${candidate}/forSetupScript"
         # shellcheck disable=SC1090
         source "${candidate}/forSetupScript"
         return
       fi
 
       if [[ -r "${candidate}/IncludeHelpers" ]]; then
+        remember_setup_helper_root "${candidate}/IncludeHelpers"
         # shellcheck disable=SC1090
         source "${candidate}/IncludeHelpers"
         return
@@ -734,10 +955,21 @@ install_payload() {
   fi
 }
 
+perform_install_preflight() {
+  log INFO "Starte Preflight-Prüfung der Installationsumgebung"
+  require_setuphelper_version "${REQUIRED_SETUP_HELPER_VERSION}"
+  require_python3
+  log INFO "python3 wurde gefunden"
+  require_python_module "dbus_next"
+  log INFO "Python-Modul dbus_next ist verfügbar"
+}
+
 perform_install() {
   filesUpdated=false
   servicesUpdated=false
   dbusSettingsUpdated=false
+
+  perform_install_preflight
 
   begin_helper_session
   register_package_dependencies

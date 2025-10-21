@@ -24,6 +24,21 @@ Die Installation erfolgt über den SetupHelper in Kombination mit dem Victron Pa
 > `ServicePath`/`VoltagePath` werden ignoriert. Fehlt eine gültige Quelle, beendet sich der
 > Simulator kontrolliert, damit kein D+-Signal ohne reale Spannungsdaten erzeugt wird.
 
+### Automatische Vorprüfungen des Installers
+
+Vor dem eigentlichen Installationslauf führt das Setup-Skript eine Preflight-Prüfung durch. Die
+Installation wird nur gestartet, wenn folgende Voraussetzungen erfüllt sind:
+
+- **SetupHelper ab Version 8.10** – ältere Versionen werden mit einer klaren Fehlermeldung
+  abgewiesen.
+- **Verfügbares `python3`** – der Interpreter muss im Pfad auffindbar sein.
+- **Python-Modul `dbus-next`** – wird per `python3 -c "import dbus_next"` geprüft.
+
+Fehlt eine der Komponenten, bricht der Installer kontrolliert ab und verweist auf die erforderliche
+Voraussetzung. Das `packageDependencies`-Dokument bleibt bewusst leer, da der DPlus Simulator keine
+anderen SetupHelper-Pakete erzwingt. Optionale Erweiterungen (z. B. `gpiosetup`/`guimods` für den
+Relaisbetrieb) werden weiterhin in der Anwendung dokumentiert, ohne die Installation zu blockieren.
+
 ### Konfigurationspfade
 Die Konfiguration erfolgt über den Victron DBus (Service `com.victronenergy.settings`).
 Die wichtigsten Schlüssel im Gerätekontext `Settings/Devices/DPlusSim` sind:
