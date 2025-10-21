@@ -19,6 +19,10 @@ def _cleanup_helper_state(repo_root: Path) -> None:
             pass
 
 
+def _load_line_delimited_json(path: Path) -> list[dict]:
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [json.loads(line) for line in lines]
+
 
 def test_register_dbus_settings_generates_json(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
@@ -53,12 +57,8 @@ register_dbus_settings
     dbus_list_file = repo_root / "DbusSettingsList"
     assert not dbus_list_file.exists(), "Die temporäre DbusSettingsList-Datei wurde nicht entfernt."
 
-    payload_text = payload_file.read_text(encoding="utf-8").strip()
-    assert payload_text, "Es wurde keine JSON-Payload erzeugt."
-
-    payload = json.loads(payload_text)
-    assert isinstance(payload, list)
-    assert payload, "Die JSON-Payload darf nicht leer sein."
+    payload = _load_line_delimited_json(payload_file)
+    assert payload, "Es wurde keine JSON-Payload erzeugt."
 
     first_entry = payload[0]
     assert isinstance(first_entry, dict)
@@ -115,12 +115,8 @@ perform_install
     subprocess.run(["bash", "-c", script], check=True, cwd=repo_root)
     _cleanup_helper_state(repo_root)
 
-    payload_text = payload_file.read_text(encoding="utf-8").strip()
-    assert payload_text, "Es wurde keine JSON-Payload erzeugt."
-
-    payload = json.loads(payload_text)
-    assert isinstance(payload, list), "Die JSON-Payload muss eine Liste sein."
-    assert payload, "Die JSON-Payload darf nicht leer sein."
+    payload = _load_line_delimited_json(payload_file)
+    assert payload, "Es wurde keine JSON-Payload erzeugt."
 
     dbus_list_file = repo_root / "DbusSettingsList"
     assert not dbus_list_file.exists(), "Die temporäre DbusSettingsList-Datei wurde nicht entfernt."
