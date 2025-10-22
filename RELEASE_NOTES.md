@@ -14,6 +14,8 @@
   Installationen mit unveränderten Helper-Skripten störungsfrei durchlaufen.
 - Die Abhängigkeitsprüfung läuft nur noch bei tatsächlichen Installationen; Deinstallations- und
   Statusläufe überspringen `checkPackageDependencies`, um Bereinigungen nicht zu blockieren.
+- Installer beendet jetzt den Lauf sofort mit der vom SetupHelper gelieferten Meldung, sobald dieser
+  `installFailed` oder eine abweichende `scriptAction` signalisiert – selbst bei Rückgabewert `0`.
 - Installer signalisiert SetupHelper nach Installations-, Deinstallations- und Statusläufen nun explizit über `endScript`, ob Dateien, Dienste oder D-Bus-Settings aktualisiert wurden; dadurch greifen automatische GUI-Neustarts bzw. Reboot-Aufforderungen, während eine Fallback-Implementierung lokale Tests weiterhin ohne SetupHelper ermöglicht.
 - Registrierung und Deregistrierung der D-Bus-Settings verwenden ausschließlich `addAllDbusSettings`, `removeAllDbusSettings` und `removeDbusSettings`. Die JSON-Payload wird zur Laufzeit erzeugt, kurzzeitig in `DbusSettingsList` abgelegt und nach erfolgreichem Helper-Aufruf wieder entfernt, wodurch der Ablauf mit den offiziellen SetupHelper-Beispielen identisch bleibt.
 
