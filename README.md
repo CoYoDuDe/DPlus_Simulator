@@ -52,6 +52,11 @@ lediglich informativ protokolliert, dass keine Konfliktprüfung stattfindet. Opt
 (z. B. `gpiosetup`/`guimods` für den Relaisbetrieb) werden weiterhin in der Anwendung dokumentiert, ohne
 die Installation zu blockieren.
 
+Meldet der SetupHelper trotz Rückgabewert `0` einen Konflikt – etwa über `installFailed=true` oder
+eine geänderte `scriptAction` (z. B. `UNINSTALL`) –, bricht der Installer den Lauf sofort mit dem vom
+Helper gelieferten Hinweis (`installFailMessage`) ab. So werden Paketkollisionen auch ohne gesetzten
+Fehlercode zuverlässig gestoppt.
+
 ### SetupHelper-Kompatibilität und Registrierung der D-Bus-Settings
 
 - Der Installer setzt vollständig auf die offiziellen SetupHelper-Funktionen `addAllDbusSettings`,

@@ -22,6 +22,11 @@ servicesUpdated=false
 dbusSettingsUpdated=false
 declare -a _dbus_settings_entries=()
 _dbus_settings_multiline=""
+LAST_PACKAGE_DEPENDENCY_CHECK_STATUS=""
+LAST_PACKAGE_DEPENDENCY_CHECK_ACTION=""
+LAST_PACKAGE_DEPENDENCY_CHECK_INSTALL_FAILED=""
+LAST_PACKAGE_DEPENDENCY_CHECK_FAIL_MESSAGE=""
+LAST_PACKAGE_DEPENDENCY_CHECK_CONFLICT=false
 
 log() {
   local level="${1^^}"
@@ -798,6 +803,12 @@ service_is_up() {
 register_package_dependencies() {
   local resolved_action="${scriptAction:-}"
 
+  LAST_PACKAGE_DEPENDENCY_CHECK_STATUS=""
+  LAST_PACKAGE_DEPENDENCY_CHECK_ACTION=""
+  LAST_PACKAGE_DEPENDENCY_CHECK_INSTALL_FAILED=""
+  LAST_PACKAGE_DEPENDENCY_CHECK_FAIL_MESSAGE=""
+  LAST_PACKAGE_DEPENDENCY_CHECK_CONFLICT=false
+
   if [[ -z "${resolved_action}" ]]; then
     case "${RESOLVED_CLI_ACTION:-}" in
       install|INSTALL)
@@ -838,7 +849,49 @@ register_package_dependencies() {
     status=$?
   fi
 
+  local helper_action_after="${scriptAction:-}"
+  local helper_install_failed="${installFailed:-}"
+  local helper_install_fail_message="${installFailMessage:-}"
+  local normalized_action_after=""
+  if [[ -n "${helper_action_after}" ]]; then
+    normalized_action_after="${helper_action_after^^}"
+  fi
+
+  local normalized_install_failed="${helper_install_failed,,}"
+  local helper_conflict_detected=false
+  case "${normalized_install_failed}" in
+    true|1|yes)
+      helper_conflict_detected=true
+      ;;
+  esac
+
+  if [[ -n "${normalized_action_after}" && "${normalized_action_after}" != "INSTALL" ]]; then
+    helper_conflict_detected=true
+  fi
+
+  LAST_PACKAGE_DEPENDENCY_CHECK_STATUS="${status}"
+  LAST_PACKAGE_DEPENDENCY_CHECK_ACTION="${helper_action_after}"
+  LAST_PACKAGE_DEPENDENCY_CHECK_INSTALL_FAILED="${helper_install_failed}"
+  LAST_PACKAGE_DEPENDENCY_CHECK_FAIL_MESSAGE="${helper_install_fail_message}"
+  LAST_PACKAGE_DEPENDENCY_CHECK_CONFLICT="${helper_conflict_detected}"
+
   if (( status == 0 )); then
+    if [[ "${helper_conflict_detected}" == true ]]; then
+      local conflict_message="${helper_install_fail_message}"
+      if [[ -z "${conflict_message}" ]]; then
+        if [[ -n "${normalized_action_after}" && "${normalized_action_after}" != "INSTALL" ]]; then
+          conflict_message="SetupHelper hat die Aktion ${normalized_action_after} angefordert; Installation wird abgebrochen."
+        else
+          conflict_message="SetupHelper meldete Paketkonflikte; die Installation wird abgebrochen."
+        fi
+      else
+        if [[ -n "${normalized_action_after}" && "${normalized_action_after}" != "INSTALL" ]]; then
+          conflict_message="${conflict_message} (scriptAction=${normalized_action_after})"
+        fi
+      fi
+      die "${conflict_message}"
+    fi
+
     return
   fi
 

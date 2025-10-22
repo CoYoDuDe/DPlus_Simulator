@@ -176,3 +176,42 @@ register_package_dependencies
     assert any("checkPackageDependencies meldete Fehler" in line for line in stdout)
     log_lines = log_file.read_text(encoding="utf-8").splitlines()
     assert f"check:{dependencies_file}" in log_lines
+
+
+def test_register_package_dependencies_aborts_on_helper_abort(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    setup_script = repo_root / "setup"
+    dependencies_file = tmp_path / "packageDependencies"
+
+    dependencies_file.write_text("conflict\n", encoding="utf-8")
+
+    script = f"""
+set -euo pipefail
+export DPLUS_SIMULATOR_SKIP_MAIN=1
+source "{setup_script}"
+PACKAGE_DEPENDENCIES_FILE="{dependencies_file}"
+scriptAction=INSTALL
+
+checkPackageDependencies() {{
+  scriptAction=UNINSTALL
+  installFailed=true
+  installFailMessage="Konflikt erkannt"
+  return 0
+}}
+
+register_package_dependencies
+"""
+
+    completed = subprocess.run(
+        ["bash", "-c", script],
+        check=False,
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+    )
+    _cleanup_helper_state(repo_root)
+
+    assert completed.returncode != 0, "Das Setup-Skript muss bei Konfliktmeldungen des Helpers abbrechen."
+    stdout_lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    assert any("Konflikt erkannt" in line for line in stdout_lines), "Die Konfliktmeldung des Helpers wurde nicht ausgegeben."
+    assert any("scriptAction=UNINSTALL" in line for line in stdout_lines), "Die geänderte Helper-Aktion wurde nicht protokolliert."
