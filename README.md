@@ -34,6 +34,19 @@ Nach jedem Installations-, Deinstallations- oder Statuslauf signalisiert das Set
 
 Wird das Skript ohne SetupHelper ausgeführt (z. B. in lokalen Testumgebungen), kommt ein Fallback zum Einsatz, der die bisherigen Log-Meldungen erzeugt, ohne zusätzliche Neustarts anzustoßen. Dadurch bleiben manuelle Tests und CI-Läufe weiterhin möglich.
 
+### FileSets-basierte GUI-Verteilung
+
+- Die QML-Oberfläche wird jetzt über die SetupHelper-FileSets ausgeliefert. Die Dateien `FileSets/fileListVersionIndependent`
+  und `FileSets/fileListPatched` listen die vollständigen Zielpfade auf (`/opt/victronenergy/gui/qml/...`).
+- Das Setup-Skript ruft nach dem Kopieren der Nutzlast automatisch `checkFileSets` und `updateFileSets` auf. Damit verteilt der
+  SetupHelper die Version-Independent-Dateien (`PageSettingsDPlusSimulator.qml`, `utils.js`) sowie den Patch für
+  `PageSettings.qml` auf alle unterstützten Venus-OS-Versionen.
+- Ohne externe Helper-Ressourcen sorgt der interne Fallback dafür, dass die Dateien in ein lokales Testziel
+  (`$INSTALL_ROOT/filesets-target` bzw. den per `DPLUS_SIMULATOR_FILESETS_TARGET_ROOT` gesetzten Pfad) gespiegelt werden.
+- Der Patch orientiert sich an der aktuellen GUI-v1-Struktur von Venus OS 3.x. Sollte eine spätere Firmware eine inkompatible
+  `PageSettings.qml` bereitstellen, markiert SetupHelper das FileSet automatisch als `INCOMPLETE` und bricht die Installation
+  gemäß offiziellen Richtlinien ab.
+
 Die Installation wird nur gestartet, wenn folgende Voraussetzungen erfüllt sind:
 
 - **SetupHelper ab Version 8.10** – ältere Versionen werden mit einer klaren Fehlermeldung

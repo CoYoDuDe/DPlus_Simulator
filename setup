@@ -274,6 +274,109 @@ copy_tree() {
     tar -C "${src}" -cf - . | tar -C "${dest}" -xf -
   fi
 }
+
+process_file_sets_for_action() {
+  local desired_action="${1:-}"
+  local action_upper="${desired_action^^}"
+
+  local file_sets_root=""
+  if [[ -d "${INSTALL_ROOT}/FileSets" ]]; then
+    file_sets_root="${INSTALL_ROOT}/FileSets"
+  elif [[ -d "${PROJECT_ROOT}/FileSets" ]]; then
+    file_sets_root="${PROJECT_ROOT}/FileSets"
+  else
+    log INFO "Keine FileSets gefunden – überspringe updateFileSets"
+    return
+  fi
+
+  local previous_pkgFileSets="${pkgFileSets-}"
+  local previous_version_independent="${versionIndependentFileSet-}"
+  local previous_patch_dir="${patchSourceDir-}"
+  local previous_file_set="${fileSet-}"
+  local previous_package_name="${packageName-}"
+  local previous_action="${scriptAction-}"
+  local had_pkgFileSets=0
+  local had_version_independent=0
+  local had_patch_dir=0
+  local had_file_set=0
+  local had_package_name=0
+  local had_action=0
+
+  if [[ -v pkgFileSets ]]; then had_pkgFileSets=1; fi
+  if [[ -v versionIndependentFileSet ]]; then had_version_independent=1; fi
+  if [[ -v patchSourceDir ]]; then had_patch_dir=1; fi
+  if [[ -v fileSet ]]; then had_file_set=1; fi
+  if [[ -v packageName ]]; then had_package_name=1; fi
+  if [[ -v scriptAction ]]; then had_action=1; fi
+
+  pkgFileSets="${file_sets_root}"
+  versionIndependentFileSet="${file_sets_root}/VersionIndependent"
+  patchSourceDir="${file_sets_root}/PatchSource"
+  fileSet="${file_sets_root}/${venusVersion-}"
+
+  if [[ -n "${previous_package_name}" ]]; then
+    packageName="${previous_package_name}"
+  else
+    packageName="DPlus_Simulator"
+  fi
+
+  if [[ -n "${action_upper}" ]]; then
+    scriptAction="${action_upper}"
+  fi
+
+  local status
+  status=127
+  if ! call_helper_function_if_available checkFileSets; then
+    status=$?
+    if (( status != 127 )); then
+      log WARN "checkFileSets meldete Status ${status}"
+    fi
+  fi
+
+  status=127
+  if ! call_helper_function_if_available updateFileSets; then
+    status=$?
+    if (( status != 127 )); then
+      log WARN "updateFileSets meldete Status ${status}"
+    fi
+  fi
+
+  if [[ -n "${previous_action}" ]]; then
+    scriptAction="${previous_action}"
+  elif (( had_action == 0 )); then
+    unset scriptAction 2>/dev/null || true
+  fi
+
+  if (( had_pkgFileSets )); then
+    pkgFileSets="${previous_pkgFileSets}"
+  else
+    unset pkgFileSets 2>/dev/null || true
+  fi
+
+  if (( had_version_independent )); then
+    versionIndependentFileSet="${previous_version_independent}"
+  else
+    unset versionIndependentFileSet 2>/dev/null || true
+  fi
+
+  if (( had_patch_dir )); then
+    patchSourceDir="${previous_patch_dir}"
+  else
+    unset patchSourceDir 2>/dev/null || true
+  fi
+
+  if (( had_file_set )); then
+    fileSet="${previous_file_set}"
+  else
+    unset fileSet 2>/dev/null || true
+  fi
+
+  if (( had_package_name )); then
+    packageName="${previous_package_name}"
+  else
+    unset packageName 2>/dev/null || true
+  fi
+}
 call_helper_function_if_available() {
   local fn="$1"
   shift || true
@@ -435,6 +538,168 @@ define_builtin_helper_fallback() {
       return 0
     fi
     return 1
+  }
+
+  __dplus_helper_filesets_state_dir="${__dplus_helper_state_dir}/filesets"
+  mkdir -p "${__dplus_helper_filesets_state_dir}"
+
+  __dplus_helper_trim() {
+    local value="${1-}"
+    value="${value#${value%%[![:space:]]*}}"
+    value="${value%${value##*[![:space:]]}}"
+    printf '%s' "${value}"
+  }
+
+  __dplus_helper_filesets_root() {
+    local root="${pkgFileSets-}"
+    if [[ -z "${root}" ]]; then
+      if [[ -d "${INSTALL_ROOT:-}/FileSets" ]]; then
+        root="${INSTALL_ROOT}/FileSets"
+      elif [[ -d "${__dplus_helper_project_root}/FileSets" ]]; then
+        root="${__dplus_helper_project_root}/FileSets"
+      else
+        root=""
+      fi
+    fi
+    printf '%s' "${root}"
+  }
+
+  __dplus_helper_filesets_target_root="${DPLUS_SIMULATOR_FILESETS_TARGET_ROOT:-}"
+  if [[ -z "${__dplus_helper_filesets_target_root}" ]]; then
+    if [[ -n "${INSTALL_ROOT:-}" ]]; then
+      __dplus_helper_filesets_target_root="${INSTALL_ROOT}/filesets-target"
+    else
+      __dplus_helper_filesets_target_root="${__dplus_helper_project_root}/.install/filesets-target"
+    fi
+  fi
+
+  __dplus_helper_resolve_target_path() {
+    local absolute_path="$1"
+    local trimmed
+    trimmed="$(__dplus_helper_trim "${absolute_path}")"
+    if [[ -z "${trimmed}" ]]; then
+      return 1
+    fi
+    trimmed="${trimmed#/}"
+    printf '%s/%s' "${__dplus_helper_filesets_target_root}" "${trimmed}"
+  }
+
+  __dplus_helper_copy_file_if_present() {
+    local source_file="$1"
+    local destination_file="$2"
+    if [[ ! -f "${source_file}" ]]; then
+      logMessage WARN "Fallback: Quelldatei ${source_file} nicht gefunden"
+      return 1
+    fi
+    mkdir -p "$(dirname "${destination_file}")"
+    cp "${source_file}" "${destination_file}"
+    return 0
+  }
+
+  checkFileSets() {
+    local root
+    root="$(__dplus_helper_filesets_root)"
+    if [[ -z "${root}" || ! -d "${root}" ]]; then
+      logMessage INFO "Fallback: Keine FileSets gefunden – überspringe Prüfung"
+      return 0
+    fi
+    : > "${__dplus_helper_filesets_state_dir}/last_check"
+    printf '%s\n' "${root}" > "${__dplus_helper_filesets_state_dir}/last_check"
+    logMessage INFO "Fallback: prüfe FileSets in ${root}"
+    return 0
+  }
+
+  updateFileSets() {
+    local root
+    root="$(__dplus_helper_filesets_root)"
+    if [[ -z "${root}" || ! -d "${root}" ]]; then
+      logMessage INFO "Fallback: Keine FileSets gefunden – überspringe Aktualisierung"
+      return 0
+    fi
+
+    local action="${scriptAction:-INSTALL}"
+    local version_independent_dir="${versionIndependentFileSet:-${root}/VersionIndependent}"
+    local patch_dir="${patchSourceDir:-${root}/PatchSource}"
+
+    mkdir -p "${__dplus_helper_filesets_target_root}"
+    : > "${__dplus_helper_filesets_state_dir}/last_files"
+    printf '%s\n' "${action}" > "${__dplus_helper_filesets_state_dir}/last_action"
+    printf '%s\n' "${root}" > "${__dplus_helper_filesets_state_dir}/last_source"
+
+    local list_file="${root}/fileListVersionIndependent"
+    if [[ -f "${list_file}" ]]; then
+      while IFS= read -r entry; do
+        entry="$(__dplus_helper_trim "${entry}")"
+        [[ -z "${entry}" || "${entry}" == \\#* ]] && continue
+        local destination
+        destination="$(__dplus_helper_resolve_target_path "${entry}")" || continue
+        if [[ "${action}" == "UNINSTALL" ]]; then
+          rm -f "${destination}"
+          printf '%s\n' "remove:${destination}" >> "${__dplus_helper_filesets_state_dir}/last_files"
+          continue
+        fi
+        local base
+        base="${entry##*/}"
+        local source=""
+        if [[ -f "${version_independent_dir}/${base}" ]]; then
+          source="${version_independent_dir}/${base}"
+        elif [[ -f "${root}/${base}" ]]; then
+          source="${root}/${base}"
+        fi
+        if __dplus_helper_copy_file_if_present "${source}" "${destination}"; then
+          printf '%s\n' "copy:${destination}" >> "${__dplus_helper_filesets_state_dir}/last_files"
+        fi
+      done < "${list_file}"
+    fi
+
+    local patched_list="${root}/fileListPatched"
+    if [[ -f "${patched_list}" ]]; then
+      while IFS= read -r entry; do
+        entry="$(__dplus_helper_trim "${entry}")"
+        [[ -z "${entry}" || "${entry}" == \\#* ]] && continue
+        local destination
+        destination="$(__dplus_helper_resolve_target_path "${entry}")" || continue
+        local base
+        base="${entry##*/}"
+        if [[ "${action}" == "UNINSTALL" ]]; then
+          local orig_file="${patch_dir}/${base}.orig"
+          if [[ -f "${orig_file}" ]]; then
+            if __dplus_helper_copy_file_if_present "${orig_file}" "${destination}"; then
+              printf '%s\n' "restore:${destination}" >> "${__dplus_helper_filesets_state_dir}/last_files"
+            fi
+          else
+            rm -f "${destination}"
+            printf '%s\n' "remove:${destination}" >> "${__dplus_helper_filesets_state_dir}/last_files"
+          fi
+          continue
+        fi
+
+        local patched_file="${patch_dir}/${base}"
+        if [[ -f "${patched_file}" ]]; then
+          if __dplus_helper_copy_file_if_present "${patched_file}" "${destination}"; then
+            printf '%s\n' "patch:${destination}" >> "${__dplus_helper_filesets_state_dir}/last_files"
+          fi
+          continue
+        fi
+
+        local orig_file="${patch_dir}/${base}.orig"
+        local patch_file="${patch_dir}/${base}.patch"
+        if [[ -f "${orig_file}" && -f "${patch_file}" ]]; then
+          local temp_file
+          temp_file="${destination}.tmp"
+          cp "${orig_file}" "${temp_file}"
+          if patch -s "${temp_file}" "${patch_file}"; then
+            mv "${temp_file}" "${destination}"
+            printf '%s\n' "patch:${destination}" >> "${__dplus_helper_filesets_state_dir}/last_files"
+            continue
+          fi
+          rm -f "${temp_file}"
+        fi
+        logMessage WARN "Fallback: Konnte Patch-Datei für ${base} nicht anwenden"
+      done < "${patched_list}"
+    fi
+
+    return 0
   }
 
   __dplus_helper_settings_state_dir="${__dplus_helper_state_dir}/dbus_settings"
@@ -1045,6 +1310,7 @@ perform_install() {
   register_package_dependencies
 
   install_payload
+  process_file_sets_for_action INSTALL
   filesUpdated=true
 
   install_service
@@ -1068,6 +1334,8 @@ perform_uninstall() {
 
   remove_service
   servicesUpdated=true
+
+  process_file_sets_for_action UNINSTALL
 
   if [[ -d "${INSTALL_ROOT}" ]]; then
     log INFO "Entferne Installationsverzeichnis ${INSTALL_ROOT}"

@@ -5,6 +5,11 @@
 ### Hinzugefügt
 - Preflight-Prüfung im Installer stellt sicher, dass SetupHelper ab Version 8.10, `python3` und das
   Python-Modul `dbus-next` vorhanden sind, bevor die Installation startet.
+- FileSets-Dateilisten (`fileListVersionIndependent`, `fileListPatched`) beschreiben die Zielpfade für die
+  QML-Oberfläche; das Setup-Skript triggert `checkFileSets`/`updateFileSets`, damit SetupHelper die GUI-Dateien
+  und Patches verteilt.
+- Neue Tests prüfen, dass bei Installations- und Deinstallationsläufen `updateFileSets` ausgeführt wird und die
+  Artefakte in einem temporären Zielverzeichnis landen.
 
 ### Geändert
 - `packageDependencies` folgt nun dem SetupHelper-Format für Paketkonflikte und bleibt bewusst leer,
