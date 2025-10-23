@@ -71,10 +71,12 @@ Fehlercode zuverlässig gestoppt.
 - Der Installer protokolliert weiterhin über `endScript`, ob Dateien, Dienste und D-Bus-Settings
   geändert wurden, sodass GUI-Neustarts oder Reboot-Aufforderungen durch den SetupHelper korrekt
   ausgelöst werden.
-- Die eigentliche Ausführung von `addAllDbusSettings` bzw. `removeAllDbusSettings` übernimmt jetzt
-  `endScript`. Das Setup-Skript erzeugt ausschließlich die Eingabedatei und überlässt dem
-  SetupHelper die Konsistenzverwaltung. Fällt `endScript` weg (z. B. in lokalen Tests mit dem
-  integrierten Fallback), greifen die bisherigen Direktaufrufe als Rückfallebene.
+- Die eigentliche Ausführung von `addAllDbusSettings` erfolgt weiterhin über den SetupHelper,
+  während `unregister_dbus_settings` die verfügbaren Helper-Funktionen (`removeAllDbusSettings`
+  bzw. `removeDbusSettings`) jetzt auch bei aktiver SetupHelper-API direkt aufruft. Das Flag
+  `dbusSettingsUpdated` dient in diesem Pfad nur noch der Dokumentation gegenüber `endScript`.
+- Schlägt das Entfernen der D-Bus-Settings fehl, bricht die Deinstallation sofort mit einer
+  Fehlermeldung ab, damit keine verwaisten Einträge zurückbleiben.
 
 ### Konfigurationspfade
 Die Konfiguration erfolgt über den Victron DBus (Service `com.victronenergy.settings`).

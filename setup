@@ -825,6 +825,7 @@ unregister_dbus_settings() {
   local staging_file="${DBUS_SETTINGS_STAGING_FILE}"
   local persistent_file="${INSTALL_ROOT}/${DBUS_SETTINGS_FILENAME}"
   local removal_success=false
+  local removal_payload=""
 
   DBUS_SETTINGS_OPERATION="unregister"
   DBUS_SETTINGS_PERSISTENT_FILE="${persistent_file}"
@@ -845,27 +846,32 @@ unregister_dbus_settings() {
     DBUS_SETTINGS_STAGING_CREATED=true
   fi
 
-  if declare -F endScript >/dev/null && [[ -z "${__DPLUS_HELPER_FALLBACK_DEFINED:-}" ]]; then
-    dbusSettingsUpdated=true
-    return
+  if [[ -f "${staging_file}" ]]; then
+    removal_payload="${staging_file}"
+  elif [[ -f "${persistent_file}" ]]; then
+    removal_payload="${persistent_file}"
   fi
 
   if call_helper_function_if_available removeAllDbusSettings; then
     removal_success=true
-  elif call_helper_function_if_available removeAllDbusSettings "${staging_file}"; then
+  elif [[ -n "${removal_payload}" ]] && call_helper_function_if_available removeAllDbusSettings "${removal_payload}"; then
     removal_success=true
   elif [[ -n "${_dbus_settings_multiline}" ]] && call_helper_function_if_available removeAllDbusSettings "${_dbus_settings_multiline}"; then
     removal_success=true
   elif call_helper_function_if_available removeDbusSettings; then
     removal_success=true
-  elif call_helper_function_if_available removeDbusSettings "${staging_file}"; then
+  elif [[ -n "${removal_payload}" ]] && call_helper_function_if_available removeDbusSettings "${removal_payload}"; then
     removal_success=true
   elif [[ -n "${_dbus_settings_multiline}" ]] && call_helper_function_if_available removeDbusSettings "${_dbus_settings_multiline}"; then
+    removal_success=true
+  elif [[ -z "${removal_payload}" && -z "${_dbus_settings_multiline}" ]]; then
     removal_success=true
   fi
 
   if [[ "${removal_success}" == true ]]; then
-    dbusSettingsUpdated=true
+    if [[ -n "${removal_payload}" || -n "${_dbus_settings_multiline}" ]]; then
+      dbusSettingsUpdated=true
+    fi
     return
   fi
 
@@ -876,7 +882,7 @@ unregister_dbus_settings() {
     rm -f "${staging_file}"
   fi
 
-  log WARN "Einstellungsderegistrierung konnte nicht über SetupHelper durchgeführt werden"
+  die "Deregistrierung der D-Bus-Settings fehlgeschlagen"
 }
 
 service_is_up() {
