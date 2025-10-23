@@ -156,6 +156,6 @@ perform_uninstall
     payload = _load_line_delimited_json(payload_file)
     assert payload, "Es wurde keine JSON-Payload für removeAllDbusSettings erzeugt."
 
-    assert f"endScript:INSTALL_FILES INSTALL_SERVICE ADD_DBUS_SETTINGS" in log_lines, (
+    assert f"endScript:INSTALL_FILES INSTALL_SERVICES ADD_DBUS_SETTINGS" in log_lines, (
         "endScript wurde nicht mit den erwarteten Flags aufgerufen."
     )

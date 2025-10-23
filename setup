@@ -627,7 +627,7 @@ finalize_helper_session() {
     helper_flags+=("INSTALL_FILES")
   fi
   if [[ "${servicesUpdated}" == true ]]; then
-    helper_flags+=("INSTALL_SERVICE")
+    helper_flags+=("INSTALL_SERVICES")
   fi
   if [[ "${dbusSettingsUpdated}" == true ]]; then
     helper_flags+=("ADD_DBUS_SETTINGS")

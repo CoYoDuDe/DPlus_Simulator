@@ -128,6 +128,6 @@ perform_install
     argc = int(add_calls[0].split("|")[1])
     assert argc in {0, 1}, "addAllDbusSettings wurde mit unerwarteter Argumentanzahl aufgerufen."
 
-    assert f"endScript:INSTALL_FILES INSTALL_SERVICE ADD_DBUS_SETTINGS" in log_lines, (
+    assert f"endScript:INSTALL_FILES INSTALL_SERVICES ADD_DBUS_SETTINGS" in log_lines, (
         "endScript wurde nicht mit den erwarteten Flags aufgerufen."
     )
