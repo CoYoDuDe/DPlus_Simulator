@@ -22,6 +22,14 @@ servicesUpdated=false
 dbusSettingsUpdated=false
 declare -a _dbus_settings_entries=()
 _dbus_settings_multiline=""
+DBUS_SETTINGS_FILENAME="DbusSettingsList"
+DBUS_SETTINGS_STAGING_FILE="${PROJECT_ROOT}/${DBUS_SETTINGS_FILENAME}"
+DBUS_SETTINGS_PERSISTENT_FILE="${INSTALL_ROOT}/${DBUS_SETTINGS_FILENAME}"
+DBUS_SETTINGS_STAGING_BACKUP=""
+DBUS_SETTINGS_PERSISTENT_BACKUP=""
+DBUS_SETTINGS_STAGING_CREATED=false
+DBUS_SETTINGS_PERSISTENT_UPDATED=false
+DBUS_SETTINGS_OPERATION=""
 LAST_PACKAGE_DEPENDENCY_CHECK_STATUS=""
 LAST_PACKAGE_DEPENDENCY_CHECK_ACTION=""
 LAST_PACKAGE_DEPENDENCY_CHECK_INSTALL_FAILED=""
@@ -633,7 +641,14 @@ finalize_helper_session() {
     helper_flags+=("ADD_DBUS_SETTINGS")
   fi
 
-  end_helper_session "${helper_flags[@]}"
+  local end_status=0
+  if ! end_helper_session "${helper_flags[@]}"; then
+    end_status=$?
+  fi
+
+  cleanup_dbus_settings_state "${end_status}"
+
+  return ${end_status}
 }
 
 install_service() {
@@ -692,12 +707,61 @@ write_dbus_settings_file() {
   fi
 }
 
+reset_dbus_settings_tracking() {
+  DBUS_SETTINGS_PERSISTENT_FILE="${INSTALL_ROOT}/${DBUS_SETTINGS_FILENAME}"
+  DBUS_SETTINGS_STAGING_BACKUP=""
+  DBUS_SETTINGS_PERSISTENT_BACKUP=""
+  DBUS_SETTINGS_STAGING_CREATED=false
+  DBUS_SETTINGS_PERSISTENT_UPDATED=false
+  DBUS_SETTINGS_OPERATION=""
+}
+
+cleanup_dbus_settings_state() {
+  local end_status="${1:-0}"
+  local staging_file="${DBUS_SETTINGS_STAGING_FILE}"
+  local persistent_file="${DBUS_SETTINGS_PERSISTENT_FILE:-${INSTALL_ROOT}/${DBUS_SETTINGS_FILENAME}}"
+
+  if (( end_status != 0 )); then
+    if [[ -n "${DBUS_SETTINGS_STAGING_BACKUP}" && -f "${DBUS_SETTINGS_STAGING_BACKUP}" ]]; then
+      mv -f "${DBUS_SETTINGS_STAGING_BACKUP}" "${staging_file}"
+    elif [[ "${DBUS_SETTINGS_STAGING_CREATED}" == true ]]; then
+      rm -f "${staging_file}"
+    fi
+
+    if [[ -n "${DBUS_SETTINGS_PERSISTENT_BACKUP}" && -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ]]; then
+      mv -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" "${persistent_file}"
+    elif [[ "${DBUS_SETTINGS_PERSISTENT_UPDATED}" == true ]]; then
+      rm -f "${persistent_file}"
+    fi
+  else
+    if [[ -n "${DBUS_SETTINGS_STAGING_BACKUP}" && -f "${DBUS_SETTINGS_STAGING_BACKUP}" ]]; then
+      rm -f "${DBUS_SETTINGS_STAGING_BACKUP}"
+    fi
+
+    if [[ -n "${DBUS_SETTINGS_PERSISTENT_BACKUP}" && -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ]]; then
+      rm -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}"
+    fi
+
+    if [[ "${DBUS_SETTINGS_STAGING_CREATED}" == true ]]; then
+      rm -f "${staging_file}"
+    fi
+  fi
+
+  reset_dbus_settings_tracking
+}
+
 register_dbus_settings() {
   local list_path="${PROJECT_ROOT}/settingsList"
-  local helper_json_file="${PROJECT_ROOT}/DbusSettingsList"
-  local helper_json_backup=""
-  local helper_list_created=false
+  local staging_file="${DBUS_SETTINGS_STAGING_FILE}"
+  local persistent_file="${INSTALL_ROOT}/${DBUS_SETTINGS_FILENAME}"
   local registration_success=false
+
+  DBUS_SETTINGS_OPERATION="register"
+  DBUS_SETTINGS_PERSISTENT_FILE="${persistent_file}"
+  DBUS_SETTINGS_STAGING_BACKUP=""
+  DBUS_SETTINGS_PERSISTENT_BACKUP=""
+  DBUS_SETTINGS_STAGING_CREATED=false
+  DBUS_SETTINGS_PERSISTENT_UPDATED=false
 
   build_dbus_settings_entries "${list_path}"
 
@@ -705,26 +769,33 @@ register_dbus_settings() {
     die "Es konnten keine D-Bus-Definitionen für die Registrierung generiert werden"
   fi
 
-  if [[ -f "${helper_json_file}" ]]; then
-    helper_json_backup="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.backup.XXXXXX")"
-    cp -f "${helper_json_file}" "${helper_json_backup}"
+  if [[ -f "${staging_file}" ]]; then
+    DBUS_SETTINGS_STAGING_BACKUP="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.backup.XXXXXX")"
+    cp -f "${staging_file}" "${DBUS_SETTINGS_STAGING_BACKUP}"
   fi
 
-  write_dbus_settings_file "${helper_json_file}"
-  helper_list_created=true
+  write_dbus_settings_file "${staging_file}"
+  DBUS_SETTINGS_STAGING_CREATED=true
+
+  mkdir -p "${INSTALL_ROOT}"
+  if [[ -f "${persistent_file}" ]]; then
+    DBUS_SETTINGS_PERSISTENT_BACKUP="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.persist.backup.XXXXXX")"
+    cp -f "${persistent_file}" "${DBUS_SETTINGS_PERSISTENT_BACKUP}"
+  fi
+  install -m 644 "${staging_file}" "${persistent_file}"
+  DBUS_SETTINGS_PERSISTENT_UPDATED=true
+
+  if declare -F endScript >/dev/null && [[ -z "${__DPLUS_HELPER_FALLBACK_DEFINED:-}" ]]; then
+    dbusSettingsUpdated=true
+    return
+  fi
 
   if call_helper_function_if_available addAllDbusSettings; then
     registration_success=true
-  elif call_helper_function_if_available addAllDbusSettings "${helper_json_file}"; then
+  elif call_helper_function_if_available addAllDbusSettings "${staging_file}"; then
     registration_success=true
   elif [[ -n "${_dbus_settings_multiline}" ]] && call_helper_function_if_available addAllDbusSettings "${_dbus_settings_multiline}"; then
     registration_success=true
-  fi
-
-  if [[ -n "${helper_json_backup}" ]]; then
-    mv -f "${helper_json_backup}" "${helper_json_file}"
-  elif [[ "${helper_list_created}" == true ]]; then
-    rm -f "${helper_json_file}"
   fi
 
   if [[ "${registration_success}" == true ]]; then
@@ -732,51 +803,77 @@ register_dbus_settings() {
     return
   fi
 
+  if [[ -n "${DBUS_SETTINGS_STAGING_BACKUP}" ]]; then
+    mv -f "${DBUS_SETTINGS_STAGING_BACKUP}" "${staging_file}"
+    DBUS_SETTINGS_STAGING_BACKUP=""
+  elif [[ "${DBUS_SETTINGS_STAGING_CREATED}" == true ]]; then
+    rm -f "${staging_file}"
+  fi
+
+  if [[ -n "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ]]; then
+    mv -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" "${persistent_file}"
+    DBUS_SETTINGS_PERSISTENT_BACKUP=""
+  elif [[ "${DBUS_SETTINGS_PERSISTENT_UPDATED}" == true ]]; then
+    rm -f "${persistent_file}"
+  fi
+
   die "SetupHelper stellt keine geeignete Funktion zum Registrieren der Einstellungen bereit"
 }
 
 unregister_dbus_settings() {
   local list_path="${PROJECT_ROOT}/settingsList"
-  local helper_json_file="${PROJECT_ROOT}/DbusSettingsList"
-  local helper_json_backup=""
-  local helper_list_created=false
+  local staging_file="${DBUS_SETTINGS_STAGING_FILE}"
+  local persistent_file="${INSTALL_ROOT}/${DBUS_SETTINGS_FILENAME}"
   local removal_success=false
+
+  DBUS_SETTINGS_OPERATION="unregister"
+  DBUS_SETTINGS_PERSISTENT_FILE="${persistent_file}"
+  DBUS_SETTINGS_STAGING_BACKUP=""
+  DBUS_SETTINGS_PERSISTENT_BACKUP=""
+  DBUS_SETTINGS_STAGING_CREATED=false
+  DBUS_SETTINGS_PERSISTENT_UPDATED=false
 
   build_dbus_settings_entries "${list_path}"
 
-  if [[ -f "${helper_json_file}" ]]; then
-    helper_json_backup="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.backup.XXXXXX")"
-    cp -f "${helper_json_file}" "${helper_json_backup}"
+  if [[ -f "${staging_file}" ]]; then
+    DBUS_SETTINGS_STAGING_BACKUP="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.backup.XXXXXX")"
+    cp -f "${staging_file}" "${DBUS_SETTINGS_STAGING_BACKUP}"
   fi
 
   if (( ${#_dbus_settings_entries[@]} > 0 )); then
-    write_dbus_settings_file "${helper_json_file}"
-    helper_list_created=true
+    write_dbus_settings_file "${staging_file}"
+    DBUS_SETTINGS_STAGING_CREATED=true
+  fi
+
+  if declare -F endScript >/dev/null && [[ -z "${__DPLUS_HELPER_FALLBACK_DEFINED:-}" ]]; then
+    dbusSettingsUpdated=true
+    return
   fi
 
   if call_helper_function_if_available removeAllDbusSettings; then
     removal_success=true
-  elif call_helper_function_if_available removeAllDbusSettings "${helper_json_file}"; then
+  elif call_helper_function_if_available removeAllDbusSettings "${staging_file}"; then
     removal_success=true
   elif [[ -n "${_dbus_settings_multiline}" ]] && call_helper_function_if_available removeAllDbusSettings "${_dbus_settings_multiline}"; then
     removal_success=true
   elif call_helper_function_if_available removeDbusSettings; then
     removal_success=true
-  elif call_helper_function_if_available removeDbusSettings "${helper_json_file}"; then
+  elif call_helper_function_if_available removeDbusSettings "${staging_file}"; then
     removal_success=true
   elif [[ -n "${_dbus_settings_multiline}" ]] && call_helper_function_if_available removeDbusSettings "${_dbus_settings_multiline}"; then
     removal_success=true
   fi
 
-  if [[ -n "${helper_json_backup}" ]]; then
-    mv -f "${helper_json_backup}" "${helper_json_file}"
-  elif [[ "${helper_list_created}" == true ]]; then
-    rm -f "${helper_json_file}"
-  fi
-
   if [[ "${removal_success}" == true ]]; then
     dbusSettingsUpdated=true
     return
+  fi
+
+  if [[ -n "${DBUS_SETTINGS_STAGING_BACKUP}" ]]; then
+    mv -f "${DBUS_SETTINGS_STAGING_BACKUP}" "${staging_file}"
+    DBUS_SETTINGS_STAGING_BACKUP=""
+  elif [[ "${DBUS_SETTINGS_STAGING_CREATED}" == true ]]; then
+    rm -f "${staging_file}"
   fi
 
   log WARN "Einstellungsderegistrierung konnte nicht über SetupHelper durchgeführt werden"
