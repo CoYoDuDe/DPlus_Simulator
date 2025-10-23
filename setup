@@ -642,7 +642,9 @@ finalize_helper_session() {
   fi
 
   local end_status=0
-  if ! end_helper_session "${helper_flags[@]}"; then
+  if end_helper_session "${helper_flags[@]}"; then
+    end_status=0
+  else
     end_status=$?
   fi
 
