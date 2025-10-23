@@ -328,7 +328,9 @@ process_file_sets_for_action() {
   local result=0
 
   status=127
-  if ! call_helper_function_if_available checkFileSets; then
+  if call_helper_function_if_available checkFileSets; then
+    status=0
+  else
     status=$?
     if (( status != 127 )); then
       log ERROR "checkFileSets meldete Status ${status}"
@@ -336,12 +338,16 @@ process_file_sets_for_action() {
     fi
   fi
 
-  status=127
-  if (( result == 0 )) && ! call_helper_function_if_available updateFileSets; then
-    status=$?
-    if (( status != 127 )); then
-      log ERROR "updateFileSets meldete Status ${status}"
-      result=${status}
+  if (( result == 0 )); then
+    status=127
+    if call_helper_function_if_available updateFileSets; then
+      status=0
+    else
+      status=$?
+      if (( status != 127 )); then
+        log ERROR "updateFileSets meldete Status ${status}"
+        result=${status}
+      fi
     fi
   fi
 
