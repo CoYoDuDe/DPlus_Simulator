@@ -30,6 +30,7 @@ def test_unregister_dbus_settings_uses_remove_all(tmp_path: Path) -> None:
     log_file = tmp_path / "helper_calls.log"
     payload_file = tmp_path / "dbus_payload.json"
     dbus_list_file = repo_root / "DbusSettingsList"
+    install_root = tmp_path / "install_root"
     preexisting_content = dbus_list_file.read_bytes() if dbus_list_file.exists() else None
     file_exists_after: bool | None = None
 
@@ -39,6 +40,7 @@ def test_unregister_dbus_settings_uses_remove_all(tmp_path: Path) -> None:
     script = f"""
 set -euo pipefail
 export DPLUS_SIMULATOR_SKIP_MAIN=1
+export INSTALL_ROOT=\"{install_root}\"
 source \"{setup_script}\"
 removeDbusSettings() {{
   printf 'remove|%s|%s\\n' "$#" "$*" >> \"{log_file}\"
@@ -55,20 +57,46 @@ removeAllDbusSettings() {{
   printf 'remove_all|%s|%s|%s\\n' "${{argc}}" "${{args}}" "${{state}}" >> \"{log_file}\"
   return 0
 }}
+endScript() {{
+  printf 'endScript-begin:%s\\n' \"$*\" >> \"{log_file}\"
+  if [[ "$*" == *"ADD_DBUS_SETTINGS"* ]]; then
+    if [[ -f \"{dbus_list_file}\" ]]; then
+      removeAllDbusSettings \"{dbus_list_file}\"
+    else
+      removeAllDbusSettings
+    fi
+  fi
+  printf 'endScript-end:%s\\n' \"$*\" >> \"{log_file}\"
+  return 0
+}}
 unregister_dbus_settings
+printf 'marker-before-finalize\\n' >> \"{log_file}\"
+finalize_helper_session
 """
     try:
         subprocess.run(["bash", "-c", script], check=True, cwd=repo_root)
         file_exists_after = dbus_list_file.exists()
         log_lines = log_file.read_text(encoding="utf-8").splitlines()
 
+        marker_index = log_lines.index("marker-before-finalize")
         remove_all_calls = [line for line in log_lines if line.startswith("remove_all|")]
         assert remove_all_calls, "removeAllDbusSettings wurde nicht aufgerufen."
 
         first_call = remove_all_calls[0].split("|")
+        first_call_index = log_lines.index(remove_all_calls[0])
+        assert first_call_index > marker_index, (
+            "removeAllDbusSettings muss erst nach finalize_helper_session ausgeführt werden."
+        )
         assert first_call[3] == "present", "DbusSettingsList war während removeAllDbusSettings nicht vorhanden."
         argc = int(first_call[1])
         assert argc in {0, 1}, "removeAllDbusSettings wurde mit unerwarteter Argumentanzahl aufgerufen."
+
+        assert any(line.startswith("endScript-begin:ADD_DBUS_SETTINGS") for line in log_lines), (
+            "endScript wurde nicht mit dem ADD_DBUS_SETTINGS-Flag aufgerufen."
+        )
+        assert any(line.startswith("endScript-end:ADD_DBUS_SETTINGS") for line in log_lines), (
+            "endScript hat nicht vollständig abgeschlossen."
+        )
 
         assert not any(line.startswith("remove|") for line in log_lines), (
             "removeDbusSettings sollte in diesem Pfad nicht benötigt werden."
@@ -84,6 +112,8 @@ unregister_dbus_settings
             dbus_list_file.write_bytes(preexisting_content)
         elif dbus_list_file.exists():
             dbus_list_file.unlink()
+        if install_root.exists():
+            shutil.rmtree(install_root)
 
 
 def test_perform_uninstall_reports_end_script_flags(tmp_path: Path) -> None:
@@ -101,6 +131,7 @@ export DPLUS_SIMULATOR_SKIP_MAIN=1
 export INSTALL_ROOT=\"{install_root}\"
 source \"{setup_script}\"
 source_helper_resources
+unset __DPLUS_HELPER_FALLBACK_DEFINED
 
 remove_service() {{
   printf 'remove_service\\n' >> \"{log_file}\"
@@ -125,7 +156,15 @@ removeAllDbusSettings() {{
 }}
 
 endScript() {{
-  printf 'endScript:%s\\n' \"$*\" >> \"{log_file}\"
+  printf 'endScript-begin:%s\\n' \"$*\" >> \"{log_file}\"
+  if [[ "$*" == *"ADD_DBUS_SETTINGS"* ]]; then
+    if [[ -f \"{repo_root}/DbusSettingsList\" ]]; then
+      removeAllDbusSettings \"{repo_root}/DbusSettingsList\"
+    else
+      removeAllDbusSettings
+    fi
+  fi
+  printf 'endScript-end:%s\\n' \"$*\" >> \"{log_file}\"
   return 0
 }}
 
@@ -142,6 +181,23 @@ perform_uninstall
     assert remove_all_calls, "removeAllDbusSettings wurde nicht verwendet."
 
     first_call = remove_all_calls[0].split("|")
+    first_call_index = log_lines.index(remove_all_calls[0])
+    assert any(line.startswith("endScript-begin:INSTALL_FILES INSTALL_SERVICES ADD_DBUS_SETTINGS") for line in log_lines), (
+        "endScript wurde nicht mit den erwarteten Flags aufgerufen."
+    )
+    assert any(line.startswith("endScript-end:INSTALL_FILES INSTALL_SERVICES ADD_DBUS_SETTINGS") for line in log_lines), (
+        "endScript wurde nicht korrekt abgeschlossen."
+    )
+    begin_index = log_lines.index(
+        next(line for line in log_lines if line.startswith("endScript-begin:"))
+    )
+    end_index = log_lines.index(
+        next(line for line in log_lines if line.startswith("endScript-end:"))
+    )
+    assert begin_index < first_call_index < end_index, (
+        "removeAllDbusSettings muss innerhalb von endScript aufgerufen werden."
+    )
+
     assert first_call[3] == "present", "DbusSettingsList war während removeAllDbusSettings nicht vorhanden."
     argc = int(first_call[1])
     assert argc in {0, 1}, "removeAllDbusSettings wurde mit unerwarteter Argumentanzahl aufgerufen."
@@ -155,7 +211,3 @@ perform_uninstall
 
     payload = _load_line_delimited_json(payload_file)
     assert payload, "Es wurde keine JSON-Payload für removeAllDbusSettings erzeugt."
-
-    assert f"endScript:INSTALL_FILES INSTALL_SERVICES ADD_DBUS_SETTINGS" in log_lines, (
-        "endScript wurde nicht mit den erwarteten Flags aufgerufen."
-    )
