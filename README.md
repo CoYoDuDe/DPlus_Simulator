@@ -38,6 +38,9 @@ Die Installation wird nur gestartet, wenn folgende Voraussetzungen erfüllt sind
 
 - **SetupHelper ab Version 8.10** – ältere Versionen werden mit einer klaren Fehlermeldung
   abgewiesen.
+- **POSIX-kompatible `/bin/sh`-Umgebung (BusyBox ash oder Debian dash)** – die Dienst- und
+  Log-Skripte setzen seit diesem Update konsequent auf eine POSIX-Shell ohne Bash-Erweiterungen,
+  damit sie auf GX-Geräten und in Venus-OS-Chroots unverändert lauffähig bleiben.
 - **Verfügbares `python3`** – der Interpreter muss im Pfad auffindbar sein.
 - **Python-Modul `dbus-next`** – wird per `python3 -c "import dbus_next"` geprüft.
 
