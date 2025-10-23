@@ -325,19 +325,23 @@ process_file_sets_for_action() {
   fi
 
   local status
+  local result=0
+
   status=127
   if ! call_helper_function_if_available checkFileSets; then
     status=$?
     if (( status != 127 )); then
-      log WARN "checkFileSets meldete Status ${status}"
+      log ERROR "checkFileSets meldete Status ${status}"
+      result=${status}
     fi
   fi
 
   status=127
-  if ! call_helper_function_if_available updateFileSets; then
+  if (( result == 0 )) && ! call_helper_function_if_available updateFileSets; then
     status=$?
     if (( status != 127 )); then
-      log WARN "updateFileSets meldete Status ${status}"
+      log ERROR "updateFileSets meldete Status ${status}"
+      result=${status}
     fi
   fi
 
@@ -375,6 +379,10 @@ process_file_sets_for_action() {
     packageName="${previous_package_name}"
   else
     unset packageName 2>/dev/null || true
+  fi
+
+  if (( result != 0 )); then
+    return ${result}
   fi
 }
 call_helper_function_if_available() {
