@@ -63,14 +63,18 @@ Fehlercode zuverlässig gestoppt.
   `removeAllDbusSettings` und `removeDbusSettings`. Sobald externe Helper-Ressourcen nicht verfügbar
   sind, aktiviert das Setup-Skript automatisch den integrierten Fallback mit identischen
   Schnittstellen.
-- Die D-Bus-Definitionen werden zur Laufzeit aus `settingsList` generiert, als JSON-Array in der
-  Projektwurzel unter `DbusSettingsList` zwischengespeichert und nach erfolgreichem
-  Registrierungs- bzw. Deregistrierungslauf wieder entfernt. Dadurch liest der SetupHelper die
-  Daten identisch zu seinen Beispiel-Add-ons ein, ohne dass zusätzliche Helper-Funktionen wie
-  `addAllDbusSettingsFromFile` benötigt werden.
+- Die D-Bus-Definitionen werden zur Laufzeit aus `settingsList` generiert, bis zum Abschluss von
+  `finalize_helper_session` in der Projektwurzel unter `DbusSettingsList` vorgehalten und parallel
+  in das Installationsverzeichnis kopiert. Dadurch kann `endScript` den Inhalt direkt über das
+  Flag `ADD_DBUS_SETTINGS` einlesen, während eine persistente Kopie für spätere SetupHelper-
+  Reinstallationen bestehen bleibt.
 - Der Installer protokolliert weiterhin über `endScript`, ob Dateien, Dienste und D-Bus-Settings
   geändert wurden, sodass GUI-Neustarts oder Reboot-Aufforderungen durch den SetupHelper korrekt
   ausgelöst werden.
+- Die eigentliche Ausführung von `addAllDbusSettings` bzw. `removeAllDbusSettings` übernimmt jetzt
+  `endScript`. Das Setup-Skript erzeugt ausschließlich die Eingabedatei und überlässt dem
+  SetupHelper die Konsistenzverwaltung. Fällt `endScript` weg (z. B. in lokalen Tests mit dem
+  integrierten Fallback), greifen die bisherigen Direktaufrufe als Rückfallebene.
 
 ### Konfigurationspfade
 Die Konfiguration erfolgt über den Victron DBus (Service `com.victronenergy.settings`).
