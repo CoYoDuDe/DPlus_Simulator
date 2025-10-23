@@ -30,7 +30,7 @@ Vor dem eigentlichen Installationslauf führt das Setup-Skript eine Preflight-Pr
 
 ### Abschlussaktionen nach Installation und Deinstallation
 
-Nach jedem Installations-, Deinstallations- oder Statuslauf signalisiert das Setup-Skript dem SetupHelper jetzt explizit, welche Komponenten geändert wurden. Sobald Dateien, Dienste oder D-Bus-Settings betroffen sind, ruft das Skript `endScript` mit den Flags `INSTALL_FILES`, `INSTALL_SERVICE` und `ADD_DBUS_SETTINGS` auf. Der SetupHelper übernimmt daraufhin automatisch das Kopieren bzw. Entfernen der Dateien, das Aktualisieren des Dienstes sowie – falls erforderlich – GUI-Neustarts oder Reboot-Aufforderungen gemäß den offiziellen Richtlinien.
+Nach jedem Installations-, Deinstallations- oder Statuslauf signalisiert das Setup-Skript dem SetupHelper jetzt explizit, welche Komponenten geändert wurden. Sobald Dateien, Dienste oder D-Bus-Settings betroffen sind, ruft das Skript `endScript` mit den Flags `INSTALL_FILES`, `INSTALL_SERVICES` und `ADD_DBUS_SETTINGS` auf. Der SetupHelper übernimmt daraufhin automatisch das Kopieren bzw. Entfernen der Dateien, das Aktualisieren des Dienstes sowie – falls erforderlich – GUI-Neustarts oder Reboot-Aufforderungen gemäß den offiziellen Richtlinien.
 
 Wird das Skript ohne SetupHelper ausgeführt (z. B. in lokalen Testumgebungen), kommt ein Fallback zum Einsatz, der die bisherigen Log-Meldungen erzeugt, ohne zusätzliche Neustarts anzustoßen. Dadurch bleiben manuelle Tests und CI-Läufe weiterhin möglich.
 
