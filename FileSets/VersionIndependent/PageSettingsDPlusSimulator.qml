@@ -14,6 +14,7 @@ MbPage {
         property string relayFunctionTag: "dplus-simulator"
         property string relayFunctionNeutral: "none"
         property string mosfetFunctionPath: ""
+        property var mosfetRestoreValue: undefined
         property string lastTaggedRelay: ""
         property var relayFunctionRestoreValues: ({})
         property var starterVoltageServices: []
@@ -60,12 +61,23 @@ MbPage {
                 var candidate = value.toString().toLowerCase()
                 if (candidate.indexOf("mosfet") >= 0 || candidate.indexOf("digitaloutput") >= 0) {
                         root.mosfetFunctionPath = relayFunctionPath(value)
+                        root.mosfetRestoreValue = readFunctionValue(root.mosfetFunctionPath)
+                        if (root.mosfetRestoreValue === root.relayFunctionTag)
+                                root.mosfetRestoreValue = root.relayFunctionNeutral
+                        if (!root.mosfetRestoreValue || !root.mosfetRestoreValue.length)
+                                root.mosfetRestoreValue = root.relayFunctionNeutral
                         return
                 }
                 if (entry && entry.value && entry.value.FunctionPath) {
                         var path = entry.value.FunctionPath.toString()
-                        if (path.toLowerCase().indexOf("digitaloutput") >= 0)
+                        if (path.toLowerCase().indexOf("digitaloutput") >= 0) {
                                 root.mosfetFunctionPath = path
+                                root.mosfetRestoreValue = readFunctionValue(root.mosfetFunctionPath)
+                                if (root.mosfetRestoreValue === root.relayFunctionTag)
+                                        root.mosfetRestoreValue = root.relayFunctionNeutral
+                                if (!root.mosfetRestoreValue || !root.mosfetRestoreValue.length)
+                                        root.mosfetRestoreValue = root.relayFunctionNeutral
+                        }
                 }
         }
 
@@ -405,6 +417,18 @@ MbPage {
                             active ? root.relayFunctionTag : root.relayFunctionNeutral)
         }
 
+        function restoreMosfetFunction(fallbackToNeutral) {
+                if (!root.mosfetFunctionPath || !root.mosfetFunctionPath.length)
+                        return
+                var stored = root.mosfetRestoreValue
+                if (stored === root.relayFunctionTag)
+                        stored = root.relayFunctionNeutral
+                if ((!stored || !stored.length) && fallbackToNeutral)
+                        stored = root.relayFunctionNeutral
+                if (stored !== undefined && stored !== null)
+                        writeFunctionValue(root.mosfetFunctionPath, stored)
+        }
+
         function updateRelayFunctionSelection(channel) {
                 var normalized = channel ? channel.toString() : ""
                 var previous = root.lastTaggedRelay
@@ -413,6 +437,8 @@ MbPage {
                                 restoreRelayFunction(previous, true)
                         cacheRelayFunction(normalized)
                         ensureExclusiveRelayFunction(normalized)
+                        if (previous && previous.length && previous !== normalized)
+                                restoreMosfetFunction(true)
                         updateMosfetFunctionTag(false)
                         ensureOutputModeValue("relay")
                         writeFunctionValue(relayFunctionPath(normalized), root.relayFunctionTag)
@@ -421,7 +447,7 @@ MbPage {
                         if (previous && previous.length)
                                 restoreRelayFunction(previous, true)
                         ensureExclusiveRelayFunction("")
-                        updateMosfetFunctionTag(true)
+                        restoreMosfetFunction(true)
                         root.lastTaggedRelay = ""
                         if (relaySelector.item && relaySelector.item.value && relaySelector.item.value.length)
                                 relaySelector.item.setValue("")
