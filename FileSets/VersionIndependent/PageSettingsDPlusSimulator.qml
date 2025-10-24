@@ -22,6 +22,9 @@ MbPage {
         property string starterVoltageBus: ""
         property bool starterVoltageScanFailed: false
         property bool starterVoltageHasValue: true
+        property bool relayValueReady: false
+        property bool outputModeReady: false
+        property bool relayInitializationDone: false
         VeQuickItemModel {
                 id: relayModel
                 source: "com.victronenergy.settings/Settings/Relays"
@@ -53,6 +56,15 @@ MbPage {
                 }
                 if (root.lastTaggedRelay && !validChannels[root.lastTaggedRelay])
                         root.lastTaggedRelay = ""
+        }
+
+        function veItemHasValidValue(item) {
+                if (!item)
+                        return false
+                var hasValue = item.value !== undefined && item.value !== null
+                if (item.valid === undefined)
+                        return hasValue
+                return item.valid && hasValue
         }
 
         function detectMosfetFunctionPath(entry, value) {
@@ -117,6 +129,8 @@ MbPage {
 
         Component.onCompleted: {
                 refreshRelayOptions()
+                root.relayValueReady = veItemHasValidValue(relaySelector.item)
+                root.outputModeReady = veItemHasValidValue(outputModeOptions.item)
                 initializeRelayAssignment()
                 discoverStarterVoltageServices()
         }
@@ -301,6 +315,10 @@ MbPage {
         }
 
         function initializeRelayAssignment() {
+                if (!root.relayValueReady || !root.outputModeReady) {
+                        return
+                }
+                root.relayInitializationDone = true
                 var selected = ""
                 if (relaySelector.item && relaySelector.item.value)
                         selected = relaySelector.item.value.toString()
@@ -401,7 +419,7 @@ MbPage {
         }
 
         function ensureOutputModeValue(mode) {
-                if (!outputModeOptions.item)
+                if (!outputModeOptions.item || !root.outputModeReady)
                         return
                 var current = outputModeOptions.item.value ? outputModeOptions.item.value.toString() : ""
                 if (current === mode)
@@ -507,6 +525,18 @@ MbPage {
                         onValueChanged: {
                                 if (!relaySelector.item)
                                         return
+                                root.relayValueReady = veItemHasValidValue(relaySelector.item)
+                                if (!root.relayValueReady) {
+                                        root.relayInitializationDone = false
+                                        return
+                                }
+                                if (!root.relayInitializationDone) {
+                                        if (root.outputModeReady)
+                                                initializeRelayAssignment()
+                                        return
+                                }
+                                if (!root.outputModeReady)
+                                        return
                                 var selected = relaySelector.item.value ? relaySelector.item.value.toString() : ""
                                 if (selected.length === 0) {
                                         updateRelayFunctionSelection("")
@@ -523,6 +553,16 @@ MbPage {
                         onValueChanged: {
                                 if (!outputModeOptions.item)
                                         return
+                                root.outputModeReady = veItemHasValidValue(outputModeOptions.item)
+                                if (!root.outputModeReady) {
+                                        root.relayInitializationDone = false
+                                        return
+                                }
+                                if (!root.relayInitializationDone) {
+                                        if (root.relayValueReady)
+                                                initializeRelayAssignment()
+                                        return
+                                }
                                 var mode = outputModeOptions.item.value ? outputModeOptions.item.value.toString() : ""
                                 if (mode === "gpio")
                                         updateRelayFunctionSelection("")
