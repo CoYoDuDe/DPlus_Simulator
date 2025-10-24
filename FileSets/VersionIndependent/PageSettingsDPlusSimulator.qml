@@ -15,6 +15,7 @@ MbPage {
         property string relayFunctionNeutral: "none"
         property string mosfetFunctionPath: ""
         property var mosfetRestoreValue: undefined
+        property bool mosfetValueReady: false
         property string lastTaggedRelay: ""
         property var relayFunctionRestoreValues: ({})
         property var starterVoltageServices: []
@@ -68,29 +69,34 @@ MbPage {
         }
 
         function detectMosfetFunctionPath(entry, value) {
-                if (root.mosfetFunctionPath && root.mosfetFunctionPath.length)
-                        return
-                var candidate = value.toString().toLowerCase()
-                if (candidate.indexOf("mosfet") >= 0 || candidate.indexOf("digitaloutput") >= 0) {
-                        root.mosfetFunctionPath = relayFunctionPath(value)
-                        root.mosfetRestoreValue = readFunctionValue(root.mosfetFunctionPath)
-                        if (root.mosfetRestoreValue === root.relayFunctionTag)
-                                root.mosfetRestoreValue = root.relayFunctionNeutral
-                        if (!root.mosfetRestoreValue || !root.mosfetRestoreValue.length)
-                                root.mosfetRestoreValue = root.relayFunctionNeutral
-                        return
+                var candidateValue = value ? value.toString() : ""
+                var candidateLower = candidateValue.toLowerCase()
+                var derivedPath = candidateValue.length ? relayFunctionPath(candidateValue) : ""
+                var discoveredPath = ""
+
+                if (candidateLower.indexOf("mosfet") >= 0 || candidateLower.indexOf("digitaloutput") >= 0)
+                        discoveredPath = derivedPath
+
+                if (!discoveredPath && entry && entry.value && entry.value.FunctionPath) {
+                        var explicitPath = entry.value.FunctionPath.toString()
+                        if (explicitPath.toLowerCase().indexOf("digitaloutput") >= 0)
+                                discoveredPath = explicitPath
                 }
-                if (entry && entry.value && entry.value.FunctionPath) {
-                        var path = entry.value.FunctionPath.toString()
-                        if (path.toLowerCase().indexOf("digitaloutput") >= 0) {
-                                root.mosfetFunctionPath = path
-                                root.mosfetRestoreValue = readFunctionValue(root.mosfetFunctionPath)
-                                if (root.mosfetRestoreValue === root.relayFunctionTag)
-                                        root.mosfetRestoreValue = root.relayFunctionNeutral
-                                if (!root.mosfetRestoreValue || !root.mosfetRestoreValue.length)
-                                        root.mosfetRestoreValue = root.relayFunctionNeutral
-                        }
-                }
+
+                if (!discoveredPath || !discoveredPath.length)
+                        return
+
+                if (!root.mosfetFunctionPath || !root.mosfetFunctionPath.length)
+                        root.mosfetFunctionPath = discoveredPath
+
+                if (root.mosfetFunctionPath !== discoveredPath)
+                        return
+
+                var restore = readFunctionValue(root.mosfetFunctionPath)
+                var hasRestore = restore !== undefined && restore !== null
+                if (hasRestore)
+                        root.mosfetRestoreValue = restore
+                root.mosfetValueReady = hasRestore
         }
 
         function extractRelayLabel(entry, fallback) {
@@ -438,13 +444,12 @@ MbPage {
         function restoreMosfetFunction(fallbackToNeutral) {
                 if (!root.mosfetFunctionPath || !root.mosfetFunctionPath.length)
                         return
+                if (!root.mosfetValueReady)
+                        return
                 var stored = root.mosfetRestoreValue
-                if (stored === root.relayFunctionTag)
-                        stored = root.relayFunctionNeutral
-                if ((!stored || !stored.length) && fallbackToNeutral)
-                        stored = root.relayFunctionNeutral
-                if (stored !== undefined && stored !== null)
-                        writeFunctionValue(root.mosfetFunctionPath, stored)
+                if (stored === undefined || stored === null)
+                        return
+                writeFunctionValue(root.mosfetFunctionPath, stored)
         }
 
         function updateRelayFunctionSelection(channel) {
