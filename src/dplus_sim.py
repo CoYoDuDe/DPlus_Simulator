@@ -2303,7 +2303,6 @@ class DPlusController:
                 channel = self._assigned_function_channel
                 if not channel:
                     return
-                self._assigned_function_channel = None
         if not channel:
             return
         if monitor is not None:
