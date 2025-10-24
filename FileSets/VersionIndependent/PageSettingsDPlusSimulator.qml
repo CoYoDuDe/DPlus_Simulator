@@ -449,7 +449,12 @@ MbPage {
                 var stored = root.mosfetRestoreValue
                 if (stored === undefined || stored === null)
                         return
-                writeFunctionValue(root.mosfetFunctionPath, stored)
+
+                var restoreValue = stored
+                if (fallbackToNeutral && root.relayFunctionNeutral && root.relayFunctionNeutral.length)
+                        restoreValue = root.relayFunctionNeutral
+
+                writeFunctionValue(root.mosfetFunctionPath, restoreValue)
         }
 
         function updateRelayFunctionSelection(channel) {
