@@ -2206,6 +2206,7 @@ class DPlusController:
             for channel, value in assignments.items()
             if channel
         }
+        release_channel: Optional[str] = None
         async with self._lock:
             self._relay_function_assignments = normalized
             target_channel = self._select_relay_assignment_channel(normalized)
@@ -2216,10 +2217,14 @@ class DPlusController:
                     initial=initial,
                 )
             else:
-                changed = await self._apply_relay_release_locked(initial=initial)
+                changed, release_channel = await self._apply_relay_release_locked(
+                    initial=initial
+                )
             if changed:
                 self._evaluate_locked()
                 await self._notify_status_locked()
+        if release_channel:
+            await self._reset_relay_function_assignment(release_channel)
 
     def _select_relay_assignment_channel(self, assignments: Dict[str, str]) -> str:
         tag = self._relay_function_tag.lower()
@@ -2262,11 +2267,14 @@ class DPlusController:
         self._assigned_function_channel = normalized
         return False
 
-    async def _apply_relay_release_locked(self, *, initial: bool = False) -> bool:
+    async def _apply_relay_release_locked(
+        self, *, initial: bool = False
+    ) -> Tuple[bool, Optional[str]]:
+        release_channel = self._assigned_function_channel
         if self._output_mode == "gpio":
             if self._assigned_function_channel:
                 self._assigned_function_channel = None
-            return False
+            return False, release_channel
         self._settings["output_mode"] = "gpio"
         self._output_mode = "gpio"
         self._apply_output_configuration(initial=initial)
@@ -2278,8 +2286,39 @@ class DPlusController:
             self._status.output_target,
         )
         self._status.gpio_state = self._output_controller.read()
+        if not release_channel:
+            release_channel = normalize_relay_channel(self._relay.channel)
+        if release_channel == "":
+            release_channel = None
         self._assigned_function_channel = None
-        return True
+        return True, release_channel
+
+    async def _reset_relay_function_assignment(
+        self, channel: Optional[str] = None
+    ) -> None:
+        neutral = self._relay_function_neutral
+        monitor = self._relay_function_monitor
+        if channel is None:
+            async with self._lock:
+                channel = self._assigned_function_channel
+                if not channel:
+                    return
+                self._assigned_function_channel = None
+        if not channel:
+            return
+        if monitor is not None:
+            try:
+                await monitor.set_function(channel, neutral)
+            except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+                self._logger.warning(
+                    "Konnte Funktionskennzeichnung für Relay %s nicht zurücksetzen: %s",
+                    channel,
+                    exc,
+                )
+        async with self._lock:
+            self._relay_function_assignments[channel] = neutral
+            if self._assigned_function_channel == channel:
+                self._assigned_function_channel = None
 
     async def _update_relay_function_assignment_locked(self) -> None:
         monitor = self._relay_function_monitor
@@ -2475,9 +2514,11 @@ class DPlusController:
             except asyncio.CancelledError:
                 pass
             self._loop_task = None
+        await self._reset_relay_function_assignment()
         self._logger.info("DPlusController wurde gestoppt")
 
     async def update_settings(self, new_settings: Dict[str, Any]) -> Dict[str, Any]:
+        release_required = False
         async with self._lock:
             previous_output_mode = self._output_mode
             previous_relay_channel = self._relay.channel
@@ -2543,9 +2584,15 @@ class DPlusController:
             self._status.gpio_state = self._output_controller.read()
             if output_mode_changed or relay_channel_changed:
                 await self._update_relay_function_assignment_locked()
+            release_required = self._output_mode == "gpio" and bool(
+                self._assigned_function_channel
+            )
             self._evaluate_locked()
             await self._notify_status_locked()
-            return self.get_status()
+            status = self.get_status()
+        if release_required:
+            await self._reset_relay_function_assignment()
+        return status
 
     async def inject_voltage(self, voltage: float) -> Dict[str, Any]:
         async with self._lock:
@@ -2556,6 +2603,7 @@ class DPlusController:
 
     async def shutdown(self) -> None:
         await self.stop()
+        await self._reset_relay_function_assignment()
         self._gpio.close()
         self._relay.close()
         self._ignition_input.close()
