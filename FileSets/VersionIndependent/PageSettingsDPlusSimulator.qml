@@ -368,7 +368,7 @@ MbPage {
                                 continue
                         if (channel === activeChannel)
                                 continue
-                        clearRelayFunction(channel)
+                        restoreRelayFunction(channel, true)
                 }
                 for (var i = 0; i < relayModel.count; ++i) {
                         var entry = relayModel.get(i)
@@ -384,7 +384,7 @@ MbPage {
                         else
                                 current = readFunctionValue(path)
                         if (current === root.relayFunctionTag)
-                                clearRelayFunction(candidate)
+                                restoreRelayFunction(candidate, true)
                 }
         }
 
@@ -410,7 +410,7 @@ MbPage {
                 var previous = root.lastTaggedRelay
                 if (normalized && normalized.length) {
                         if (previous && previous.length && previous !== normalized)
-                                clearRelayFunction(previous)
+                                restoreRelayFunction(previous, true)
                         cacheRelayFunction(normalized)
                         ensureExclusiveRelayFunction(normalized)
                         updateMosfetFunctionTag(false)
@@ -419,7 +419,7 @@ MbPage {
                         root.lastTaggedRelay = normalized
                 } else {
                         if (previous && previous.length)
-                                clearRelayFunction(previous)
+                                restoreRelayFunction(previous, true)
                         ensureExclusiveRelayFunction("")
                         updateMosfetFunctionTag(true)
                         root.lastTaggedRelay = ""
