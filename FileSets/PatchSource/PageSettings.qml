@@ -1,7 +1,7 @@
 import QtQuick 1.1
 import com.victron.velib 1.0
 import net.connman 0.1
-import "utils.js" as Utils
+import "PageSettingsDPlusSimulatorUtils.js" as Utils
 
 MbPage {
 	title: qsTr("Settings")
