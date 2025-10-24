@@ -80,7 +80,7 @@ def test_waveform_simulation_allowed_with_development_flag(monkeypatch: pytest.M
     assert args.enable_debug
 
 
-def test_shutdown_resets_relay_function_to_neutral():
+def test_stop_and_shutdown_release_assigned_relay_channel():
     class DummyMonitor:
         def __init__(self) -> None:
             self.calls: list[tuple[str, str]] = []
@@ -92,15 +92,29 @@ def test_shutdown_resets_relay_function_to_neutral():
             self.calls.append((channel, function))
 
     async def scenario() -> None:
+        relay_channel = DEFAULT_SETTINGS["relay_channel"]
+
         controller = DPlusController(DEFAULT_SETTINGS, use_gpio=False)
         monitor = DummyMonitor()
         controller.attach_relay_function_monitor(monitor)
         await controller.initialize_relay_function_assignments(
-            {DEFAULT_SETTINGS["relay_channel"]: RELAY_FUNCTION_TAG}
+            {relay_channel: RELAY_FUNCTION_TAG}
         )
+        await controller.start()
+        await asyncio.sleep(0)
+        await controller.stop()
+        assert (relay_channel, RELAY_FUNCTION_NEUTRAL) in monitor.calls
         await controller.shutdown()
-        assert monitor.calls == [
-            (DEFAULT_SETTINGS["relay_channel"], RELAY_FUNCTION_NEUTRAL)
+
+        controller_shutdown = DPlusController(DEFAULT_SETTINGS, use_gpio=False)
+        monitor_shutdown = DummyMonitor()
+        controller_shutdown.attach_relay_function_monitor(monitor_shutdown)
+        await controller_shutdown.initialize_relay_function_assignments(
+            {relay_channel: RELAY_FUNCTION_TAG}
+        )
+        await controller_shutdown.shutdown()
+        assert monitor_shutdown.calls == [
+            (relay_channel, RELAY_FUNCTION_NEUTRAL)
         ]
 
     asyncio.run(scenario())

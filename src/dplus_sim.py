@@ -2293,19 +2293,34 @@ class DPlusController:
         self._assigned_function_channel = None
         return True, release_channel
 
+    async def _release_relay_assignment(self) -> None:
+        monitor = self._relay_function_monitor
+        neutral = self._relay_function_neutral
+        channel_to_release: Optional[str]
+        async with self._lock:
+            channel_to_release = self._assigned_function_channel
+            if not channel_to_release:
+                return
+            self._assigned_function_channel = None
+            self._relay_function_assignments[channel_to_release] = neutral
+        if monitor is not None and channel_to_release is not None:
+            try:
+                await monitor.set_function(channel_to_release, neutral)
+            except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+                self._logger.warning(
+                    "Konnte Funktionskennzeichnung für Relay %s nicht zurücksetzen: %s",
+                    channel_to_release,
+                    exc,
+                )
+
     async def _reset_relay_function_assignment(
         self, channel: Optional[str] = None
     ) -> None:
+        if channel is None:
+            await self._release_relay_assignment()
+            return
         neutral = self._relay_function_neutral
         monitor = self._relay_function_monitor
-        if channel is None:
-            async with self._lock:
-                channel = self._assigned_function_channel
-                if not channel:
-                    return
-                self._assigned_function_channel = None
-        if not channel:
-            return
         if monitor is not None:
             try:
                 await monitor.set_function(channel, neutral)
@@ -2491,13 +2506,19 @@ class DPlusController:
             await self._notify_status_locked()
 
     async def stop(self) -> None:
+        loop_task: Optional[asyncio.Task[None]] = None
         async with self._lock:
-            if not self._running:
-                return
-            self._running = False
-            self._status.running = False
-            if self._loop_task:
-                self._loop_task.cancel()
+            was_running = self._running
+            if was_running:
+                self._running = False
+                self._status.running = False
+                loop_task = self._loop_task
+                if loop_task:
+                    loop_task.cancel()
+        await self._release_relay_assignment()
+        if not was_running:
+            return
+        async with self._lock:
             with contextlib.suppress(Exception):
                 self._output_controller.write(False)
             if self._output_controller is not self._gpio:
@@ -2508,13 +2529,14 @@ class DPlusController:
                     self._relay.write(False)
             self._status.gpio_state = self._output_controller.read()
             await self._notify_status_locked()
-        if self._loop_task:
+        if loop_task:
             try:
-                await self._loop_task
+                await loop_task
             except asyncio.CancelledError:
                 pass
-            self._loop_task = None
-        await self._reset_relay_function_assignment()
+        async with self._lock:
+            if self._loop_task is loop_task:
+                self._loop_task = None
         self._logger.info("DPlusController wurde gestoppt")
 
     async def update_settings(self, new_settings: Dict[str, Any]) -> Dict[str, Any]:
@@ -2603,7 +2625,7 @@ class DPlusController:
 
     async def shutdown(self) -> None:
         await self.stop()
-        await self._reset_relay_function_assignment()
+        await self._release_relay_assignment()
         self._gpio.close()
         self._relay.close()
         self._ignition_input.close()
