@@ -446,7 +446,13 @@ MbPage {
                         return
                 if (!root.mosfetValueReady)
                         return
+                var neutral = root.relayFunctionNeutral
                 var stored = root.mosfetRestoreValue
+                var activeTag = root.relayFunctionTag
+                if (stored !== undefined && stored !== null && activeTag !== undefined && activeTag !== null && stored.toString() === activeTag.toString())
+                        stored = neutral
+                if ((stored === undefined || stored === null || stored.toString().length === 0) && fallbackToNeutral)
+                        stored = neutral
                 if (stored === undefined || stored === null)
                         return
                 writeFunctionValue(root.mosfetFunctionPath, stored)
