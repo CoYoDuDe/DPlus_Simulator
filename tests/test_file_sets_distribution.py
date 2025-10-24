@@ -48,13 +48,10 @@ perform_install
 
     subprocess.run(["bash", "-c", script], check=True, cwd=repo_root)
 
-    version_independent_src = (
-        repo_root
-        / "FileSets"
-        / "VersionIndependent"
-        / "PageSettingsDPlusSimulator.qml"
-    )
-    version_independent_dest = (
+    version_independent_dir = repo_root / "FileSets" / "VersionIndependent"
+
+    qml_src = version_independent_dir / "PageSettingsDPlusSimulator.qml"
+    qml_dest = (
         target_root
         / "opt"
         / "victronenergy"
@@ -62,11 +59,20 @@ perform_install
         / "qml"
         / "PageSettingsDPlusSimulator.qml"
     )
-    assert version_independent_dest.is_file(), "VersionIndependent-Datei wurde nicht kopiert."
-    assert (
-        version_independent_dest.read_text(encoding="utf-8")
-        == version_independent_src.read_text(encoding="utf-8")
+    assert qml_dest.is_file(), "VersionIndependent-QML-Datei wurde nicht kopiert."
+    assert qml_dest.read_text(encoding="utf-8") == qml_src.read_text(encoding="utf-8")
+
+    utils_src = version_independent_dir / "PageSettingsDPlusSimulatorUtils.js"
+    utils_dest = (
+        target_root
+        / "opt"
+        / "victronenergy"
+        / "gui"
+        / "qml"
+        / "PageSettingsDPlusSimulatorUtils.js"
     )
+    assert utils_dest.is_file(), "Helper-Datei wurde nicht kopiert."
+    assert utils_dest.read_text(encoding="utf-8") == utils_src.read_text(encoding="utf-8")
 
     patched_src = repo_root / "FileSets" / "PatchSource" / "PageSettings.qml"
     patched_dest = (
@@ -152,7 +158,7 @@ perform_uninstall
         == restored_src.read_text(encoding="utf-8")
     )
 
-    version_independent_dest = (
+    qml_dest = (
         target_root
         / "opt"
         / "victronenergy"
@@ -160,9 +166,17 @@ perform_uninstall
         / "qml"
         / "PageSettingsDPlusSimulator.qml"
     )
-    assert (
-        not version_independent_dest.exists()
-    ), "VersionIndependent-Datei wurde beim Uninstall nicht entfernt."
+    assert not qml_dest.exists(), "VersionIndependent-QML-Datei wurde beim Uninstall nicht entfernt."
+
+    utils_dest = (
+        target_root
+        / "opt"
+        / "victronenergy"
+        / "gui"
+        / "qml"
+        / "PageSettingsDPlusSimulatorUtils.js"
+    )
+    assert not utils_dest.exists(), "Helper-Datei wurde beim Uninstall nicht entfernt."
 
     state_dir = repo_root / "SetupHelper" / ".helper_state" / "filesets"
     action_file = state_dir / "last_action"
