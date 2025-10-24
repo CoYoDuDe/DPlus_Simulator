@@ -3,7 +3,7 @@
 import QtQuick 1.1
 import com.victron.velib 1.0
 import QtDBus 1.0
-import "utils.js" as Utils
+import "PageSettingsDPlusSimulatorUtils.js" as DPlusUtils
 
 MbPage {
         id: root
@@ -296,7 +296,7 @@ MbPage {
         }
 
         function settingsPath(suffix) {
-                return Utils.path(settingsPrefix, suffix)
+                return DPlusUtils.path(settingsPrefix, suffix)
         }
 
         function relayFunctionPath(channel) {
