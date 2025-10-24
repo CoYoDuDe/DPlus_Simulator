@@ -14,6 +14,7 @@ MbPage {
         property string relayFunctionTag: "dplus-simulator"
         property string relayFunctionNeutral: "none"
         property string mosfetFunctionPath: ""
+        property string mosfetRelayChannel: ""
         property var mosfetRestoreValue: undefined
         property string lastTaggedRelay: ""
         property var relayFunctionRestoreValues: ({})
@@ -60,6 +61,7 @@ MbPage {
                         return
                 var candidate = value.toString().toLowerCase()
                 if (candidate.indexOf("mosfet") >= 0 || candidate.indexOf("digitaloutput") >= 0) {
+                        root.mosfetRelayChannel = (value !== undefined && value !== null) ? value.toString() : ""
                         root.mosfetFunctionPath = relayFunctionPath(value)
                         root.mosfetRestoreValue = readFunctionValue(root.mosfetFunctionPath)
                         if (root.mosfetRestoreValue === root.relayFunctionTag)
@@ -71,6 +73,7 @@ MbPage {
                 if (entry && entry.value && entry.value.FunctionPath) {
                         var path = entry.value.FunctionPath.toString()
                         if (path.toLowerCase().indexOf("digitaloutput") >= 0) {
+                                root.mosfetRelayChannel = (value !== undefined && value !== null) ? value.toString() : ""
                                 root.mosfetFunctionPath = path
                                 root.mosfetRestoreValue = readFunctionValue(root.mosfetFunctionPath)
                                 if (root.mosfetRestoreValue === root.relayFunctionTag)
@@ -433,12 +436,13 @@ MbPage {
                 var normalized = channel ? channel.toString() : ""
                 var previous = root.lastTaggedRelay
                 if (normalized && normalized.length) {
-                        if (previous && previous.length && previous !== normalized)
+                        if (previous && previous.length && previous !== normalized) {
                                 restoreRelayFunction(previous, true)
+                                if (previous === root.mosfetRelayChannel)
+                                        restoreMosfetFunction(true)
+                        }
                         cacheRelayFunction(normalized)
                         ensureExclusiveRelayFunction(normalized)
-                        if (previous && previous.length && previous !== normalized)
-                                restoreMosfetFunction(true)
                         updateMosfetFunctionTag(false)
                         ensureOutputModeValue("relay")
                         writeFunctionValue(relayFunctionPath(normalized), root.relayFunctionTag)
