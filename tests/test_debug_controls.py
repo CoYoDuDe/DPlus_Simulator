@@ -1,6 +1,8 @@
 """Tests für Debug-Einschränkungen von DPlusSim."""
 
 import asyncio
+import json
+from typing import Any
 
 import pytest
 
@@ -80,7 +82,7 @@ def test_waveform_simulation_allowed_with_development_flag(monkeypatch: pytest.M
     assert args.enable_debug
 
 
-def test_stop_and_shutdown_release_assigned_relay_channel():
+def test_stop_and_shutdown_restore_relay_backup_and_clear_settings():
     class DummyMonitor:
         def __init__(self) -> None:
             self.calls: list[tuple[str, str]] = []
@@ -93,8 +95,20 @@ def test_stop_and_shutdown_release_assigned_relay_channel():
 
     async def scenario() -> None:
         relay_channel = DEFAULT_SETTINGS["relay_channel"]
+        original_function = "genset"
+        persist_payloads: list[dict[str, str]] = []
 
-        controller = DPlusController(DEFAULT_SETTINGS, use_gpio=False)
+        settings_with_backup = dict(DEFAULT_SETTINGS)
+        settings_with_backup["relay_function_backups"] = json.dumps(
+            {relay_channel: original_function}
+        )
+
+        controller = DPlusController(settings_with_backup, use_gpio=False)
+
+        async def persist_stub(updates: dict[str, Any]) -> None:
+            persist_payloads.append(dict(updates))
+
+        controller.set_relay_backup_persist(persist_stub)
         monitor = DummyMonitor()
         controller.attach_relay_function_monitor(monitor)
         await controller.initialize_relay_function_assignments(
@@ -103,18 +117,14 @@ def test_stop_and_shutdown_release_assigned_relay_channel():
         await controller.start()
         await asyncio.sleep(0)
         await controller.stop()
-        assert (relay_channel, RELAY_FUNCTION_NEUTRAL) in monitor.calls
-        await controller.shutdown()
-
-        controller_shutdown = DPlusController(DEFAULT_SETTINGS, use_gpio=False)
-        monitor_shutdown = DummyMonitor()
-        controller_shutdown.attach_relay_function_monitor(monitor_shutdown)
-        await controller_shutdown.initialize_relay_function_assignments(
-            {relay_channel: RELAY_FUNCTION_TAG}
+        assert (relay_channel, original_function) in monitor.calls
+        assert controller.get_settings()["relay_function_backups"] == "{}"
+        assert any(
+            json.loads(payload["relay_function_backups"]) == {}
+            for payload in persist_payloads
         )
-        await controller_shutdown.shutdown()
-        assert monitor_shutdown.calls == [
-            (relay_channel, RELAY_FUNCTION_NEUTRAL)
-        ]
+        await controller.shutdown()
+        restored_functions = {function for channel, function in monitor.calls}
+        assert RELAY_FUNCTION_NEUTRAL not in restored_functions
 
     asyncio.run(scenario())

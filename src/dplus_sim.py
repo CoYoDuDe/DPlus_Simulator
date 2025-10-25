@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import contextlib
 import inspect
+import json
 import logging
 import math
 import os
@@ -2190,6 +2191,16 @@ class DPlusController:
         self._relay_function_tag = RELAY_FUNCTION_TAG
         self._relay_function_neutral = RELAY_FUNCTION_NEUTRAL
         self._assigned_function_channel: Optional[str] = None
+        self._relay_function_backups: Dict[str, str] = self._parse_relay_backups(
+            self._settings.get("relay_function_backups", "{}")
+        )
+        self._relay_backup_persist: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None
+        self._relay_backup_dirty = False
+
+    def set_relay_backup_persist(
+        self, callback: Optional[Callable[[Dict[str, Any]], Awaitable[None]]]
+    ) -> None:
+        self._relay_backup_persist = callback
 
     def set_status_callback(self, callback: Optional[StatusCallback]) -> None:
         self._status_callback = callback
@@ -2217,11 +2228,13 @@ class DPlusController:
             if channel
         }
         release_channel: Optional[str] = None
+        backups_changed = False
         async with self._lock:
             self._relay_function_assignments = normalized
             target_channel = self._select_relay_assignment_channel(normalized)
             changed = False
             if target_channel:
+                backups_changed = self._ensure_backup_for_channel_locked(target_channel)
                 changed = await self._apply_relay_assignment_locked(
                     target_channel,
                     initial=initial,
@@ -2235,6 +2248,8 @@ class DPlusController:
                 await self._notify_status_locked()
         if release_channel:
             await self._reset_relay_function_assignment(release_channel)
+        if backups_changed:
+            await self._persist_relay_backups()
 
     def _select_relay_assignment_channel(self, assignments: Dict[str, str]) -> str:
         tag = self._relay_function_tag.lower()
@@ -2307,21 +2322,26 @@ class DPlusController:
         monitor = self._relay_function_monitor
         neutral = self._relay_function_neutral
         channel_to_release: Optional[str]
+        restore_value = neutral
         async with self._lock:
             channel_to_release = self._assigned_function_channel
             if not channel_to_release:
                 return
             self._assigned_function_channel = None
-            self._relay_function_assignments[channel_to_release] = neutral
+            backup_value = self._pop_relay_function_backup_locked(channel_to_release)
+            if backup_value is not None:
+                restore_value = backup_value
+            self._relay_function_assignments[channel_to_release] = restore_value
         if monitor is not None and channel_to_release is not None:
             try:
-                await monitor.set_function(channel_to_release, neutral)
+                await monitor.set_function(channel_to_release, restore_value)
             except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
                 self._logger.warning(
                     "Konnte Funktionskennzeichnung für Relay %s nicht zurücksetzen: %s",
                     channel_to_release,
                     exc,
                 )
+        await self._persist_relay_backups()
 
     async def _reset_relay_function_assignment(
         self, channel: Optional[str] = None
@@ -2331,31 +2351,42 @@ class DPlusController:
             return
         neutral = self._relay_function_neutral
         monitor = self._relay_function_monitor
+        restore_value = neutral
+        async with self._lock:
+            backup_value = self._pop_relay_function_backup_locked(channel)
+            if backup_value is not None:
+                restore_value = backup_value
+            self._relay_function_assignments[channel] = restore_value
+            if self._assigned_function_channel == channel:
+                self._assigned_function_channel = None
         if monitor is not None:
             try:
-                await monitor.set_function(channel, neutral)
+                await monitor.set_function(channel, restore_value)
             except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
                 self._logger.warning(
                     "Konnte Funktionskennzeichnung für Relay %s nicht zurücksetzen: %s",
                     channel,
                     exc,
                 )
-        async with self._lock:
-            self._relay_function_assignments[channel] = neutral
-            if self._assigned_function_channel == channel:
-                self._assigned_function_channel = None
+        await self._persist_relay_backups()
 
-    async def _update_relay_function_assignment_locked(self) -> None:
+    async def _update_relay_function_assignment_locked(self) -> bool:
         monitor = self._relay_function_monitor
         if monitor is None:
-            return
+            return False
         target_channel = self._relay.channel if self._output_mode == "relay" else ""
         previous_channel = self._assigned_function_channel
         neutral = self._relay_function_neutral
+        backups_changed = False
         if previous_channel and previous_channel != target_channel:
             try:
-                await monitor.set_function(previous_channel, neutral)
-                self._relay_function_assignments[previous_channel] = neutral
+                restore_value = self._pop_relay_function_backup_locked(previous_channel)
+                if restore_value is None:
+                    restore_value = neutral
+                else:
+                    backups_changed = True
+                await monitor.set_function(previous_channel, restore_value)
+                self._relay_function_assignments[previous_channel] = restore_value
             except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
                 self._logger.warning(
                     "Konnte Funktionskennzeichnung für Relay %s nicht zurücksetzen: %s",
@@ -2364,6 +2395,8 @@ class DPlusController:
                 )
         if target_channel:
             try:
+                if self._ensure_backup_for_channel_locked(target_channel):
+                    backups_changed = True
                 await monitor.set_function(target_channel, self._relay_function_tag)
                 self._relay_function_assignments[target_channel] = self._relay_function_tag
                 self._assigned_function_channel = target_channel
@@ -2375,6 +2408,85 @@ class DPlusController:
                 )
         else:
             self._assigned_function_channel = None
+        return backups_changed
+
+    def _parse_relay_backups(self, value: Any) -> Dict[str, str]:
+        if isinstance(value, Mapping):
+            items = value.items()
+        elif isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return {}
+            try:
+                parsed = json.loads(text)
+            except json.JSONDecodeError:
+                self._logger.warning(
+                    "Konnte RelayFunctionBackups nicht parsen – verwende leeres Mapping"
+                )
+                return {}
+            if isinstance(parsed, Mapping):
+                items = parsed.items()
+            else:
+                self._logger.warning(
+                    "Unerwartetes Format für RelayFunctionBackups (%s) – verwende leeres Mapping",
+                    type(parsed).__name__,
+                )
+                return {}
+        else:
+            return {}
+        backups: Dict[str, str] = {}
+        for key, original in items:
+            channel = normalize_relay_channel(key)
+            if not channel:
+                continue
+            backups[channel] = str(original)
+        return backups
+
+    def _ensure_backup_for_channel_locked(self, channel: str) -> bool:
+        normalized = normalize_relay_channel(channel)
+        if not normalized:
+            return False
+        previous_value = self._relay_function_assignments.get(normalized)
+        if not previous_value or previous_value == self._relay_function_tag:
+            previous_value = self._relay_function_backups.get(normalized)
+        if not previous_value or previous_value == self._relay_function_tag:
+            return False
+        if self._relay_function_backups.get(normalized) == previous_value:
+            return False
+        self._relay_function_backups[normalized] = str(previous_value)
+        self._relay_backup_dirty = True
+        return True
+
+    def _pop_relay_function_backup_locked(self, channel: str) -> Optional[str]:
+        normalized = normalize_relay_channel(channel)
+        if not normalized:
+            return None
+        if normalized not in self._relay_function_backups:
+            return None
+        original = self._relay_function_backups.pop(normalized)
+        self._relay_backup_dirty = True
+        return str(original)
+
+    async def _persist_relay_backups(self) -> None:
+        callback = self._relay_backup_persist
+        payload: Optional[str] = None
+        async with self._lock:
+            if not self._relay_backup_dirty:
+                return
+            payload = json.dumps(
+                {k: v for k, v in sorted(self._relay_function_backups.items())}
+            )
+            self._settings["relay_function_backups"] = payload
+            self._relay_backup_dirty = False
+        if callback is None or payload is None:
+            return
+        try:
+            await callback({"relay_function_backups": payload})
+        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+            self._logger.warning(
+                "Persistierung der RelayFunctionBackups schlug fehl: %s",
+                exc,
+            )
 
     def _resolve_on_voltage(self) -> float:
         value = self._settings.get("on_voltage")
@@ -2551,6 +2663,7 @@ class DPlusController:
 
     async def update_settings(self, new_settings: Dict[str, Any]) -> Dict[str, Any]:
         release_required = False
+        backups_changed = False
         async with self._lock:
             previous_output_mode = self._output_mode
             previous_relay_channel = self._relay.channel
@@ -2615,7 +2728,7 @@ class DPlusController:
             )
             self._status.gpio_state = self._output_controller.read()
             if output_mode_changed or relay_channel_changed:
-                await self._update_relay_function_assignment_locked()
+                backups_changed = await self._update_relay_function_assignment_locked()
             release_required = self._output_mode == "gpio" and bool(
                 self._assigned_function_channel
             )
@@ -2624,6 +2737,8 @@ class DPlusController:
             status = self.get_status()
         if release_required:
             await self._reset_relay_function_assignment()
+        elif backups_changed:
+            await self._persist_relay_backups()
         return status
 
     async def inject_voltage(self, voltage: float) -> Dict[str, Any]:
@@ -3228,6 +3343,8 @@ async def run_async(args: argparse.Namespace) -> None:
         merged_settings.update(payload)
         if settings_backend is not None:
             await settings_backend.apply(payload)
+
+    controller.set_relay_backup_persist(persist_settings)
 
     if settings_backend is not None:
 
