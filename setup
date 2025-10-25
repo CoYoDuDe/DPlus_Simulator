@@ -198,31 +198,80 @@ detect_setuphelper_version() {
 version_ge() {
   local current="$1"
   local required="$2"
+  local placeholder='__EMPTY_COMPONENT__'
+  local current_list=""
+  local required_list=""
+  local current_value=""
+  local required_value=""
+  local current_number=0
+  local required_number=0
+
   local IFS='.'
-  local -a current_parts=()
-  local -a required_parts=()
+  set -- ${current}
+  while [ "$#" -gt 0 ]; do
+    current_value="$1"
+    shift
+    if [ -z "${current_value}" ]; then
+      current_value="${placeholder}"
+    fi
+    current_list="${current_list}${current_value} "
+  done
 
-  read -r -a current_parts <<< "${current}"
-  read -r -a required_parts <<< "${required}"
+  set -- ${required}
+  while [ "$#" -gt 0 ]; do
+    required_value="$1"
+    shift
+    if [ -z "${required_value}" ]; then
+      required_value="${placeholder}"
+    fi
+    required_list="${required_list}${required_value} "
+  done
 
-  local max_len="${#current_parts[@]}"
-  if (( ${#required_parts[@]} > max_len )); then
-    max_len="${#required_parts[@]}"
-  fi
+  current_list="${current_list% }"
+  required_list="${required_list% }"
 
-  local idx
-  for (( idx = 0; idx < max_len; idx++ )); do
-    local current_value="${current_parts[idx]:-0}"
-    local required_value="${required_parts[idx]:-0}"
+  while [ -n "${current_list}" ] || [ -n "${required_list}" ]; do
+    if [ -n "${current_list}" ]; then
+      IFS=' '
+      set -- ${current_list}
+      current_value="$1"
+      shift
+      current_list="$*"
+    else
+      current_value="${placeholder}"
+    fi
+
+    if [ -n "${required_list}" ]; then
+      IFS=' '
+      set -- ${required_list}
+      required_value="$1"
+      shift
+      required_list="$*"
+    else
+      required_value="${placeholder}"
+    fi
+
+    if [ "${current_value}" = "${placeholder}" ]; then
+      current_value=""
+    fi
+    if [ "${required_value}" = "${placeholder}" ]; then
+      required_value=""
+    fi
 
     current_value="${current_value//[^0-9]/}"
     required_value="${required_value//[^0-9]/}"
 
-    if (( 10#${current_value:-0} > 10#${required_value:-0} )); then
+    current_value="${current_value:-0}"
+    required_value="${required_value:-0}"
+
+    current_number=$((10#${current_value}))
+    required_number=$((10#${required_value}))
+
+    if [ "${current_number}" -gt "${required_number}" ]; then
       return 0
     fi
 
-    if (( 10#${current_value:-0} < 10#${required_value:-0} )); then
+    if [ "${current_number}" -lt "${required_number}" ]; then
       return 1
     fi
   done
