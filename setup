@@ -66,9 +66,23 @@ LAST_PACKAGE_DEPENDENCY_CHECK_INSTALL_FAILED=""
 LAST_PACKAGE_DEPENDENCY_CHECK_FAIL_MESSAGE=""
 LAST_PACKAGE_DEPENDENCY_CHECK_CONFLICT=false
 
+uppercase() {
+  if [ "$#" -eq 0 ]; then
+    return 0
+  fi
+  printf '%s' "$1" | tr '[:lower:]' '[:upper:]'
+}
+
+lowercase() {
+  if [ "$#" -eq 0 ]; then
+    return 0
+  fi
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
 log() {
   __dplus_log_level_input="${1:-}"
-  __dplus_log_level="${__dplus_log_level_input^^}"
+  __dplus_log_level="$(uppercase "${__dplus_log_level_input}")"
   if [ "$#" -gt 0 ]; then
     shift
   fi
@@ -355,7 +369,7 @@ copy_tree() {
 
 process_file_sets_for_action() {
   __dplus_process_filesets_desired="${1:-}"
-  __dplus_process_filesets_action_upper="${__dplus_process_filesets_desired^^}"
+  __dplus_process_filesets_action_upper="$(uppercase "${__dplus_process_filesets_desired}")"
 
   __dplus_process_filesets_root=""
   if [ -d "${INSTALL_ROOT}/FileSets" ]; then
@@ -487,7 +501,8 @@ define_builtin_helper_fallback() {
       shift
     fi
     __dplus_helper_log_message_timestamp="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-    printf '[HELPER][%s][%s] %s\n' "${__dplus_helper_log_message_timestamp}" "${__dplus_helper_log_message_level^^}" "$*"
+    __dplus_helper_log_message_level_upper="$(uppercase "${__dplus_helper_log_message_level}")"
+    printf '[HELPER][%s][%s] %s\n' "${__dplus_helper_log_message_timestamp}" "${__dplus_helper_log_message_level_upper}" "$*"
   }
 
   helper_begin() {
@@ -1301,7 +1316,7 @@ register_package_dependencies() {
 
   __dplus_register_pkg_normalized_action=""
   if [ -n "${__dplus_register_pkg_resolved_action}" ]; then
-    __dplus_register_pkg_normalized_action="${__dplus_register_pkg_resolved_action^^}"
+    __dplus_register_pkg_normalized_action="$(uppercase "${__dplus_register_pkg_resolved_action}")"
   fi
 
   if [ "${__dplus_register_pkg_normalized_action}" != "INSTALL" ]; then
@@ -1330,10 +1345,10 @@ register_package_dependencies() {
   __dplus_register_pkg_helper_install_fail_message="${installFailMessage:-}"
   __dplus_register_pkg_normalized_action_after=""
   if [ -n "${__dplus_register_pkg_helper_action_after}" ]; then
-    __dplus_register_pkg_normalized_action_after="${__dplus_register_pkg_helper_action_after^^}"
+    __dplus_register_pkg_normalized_action_after="$(uppercase "${__dplus_register_pkg_helper_action_after}")"
   fi
 
-  __dplus_register_pkg_normalized_install_failed="${__dplus_register_pkg_helper_install_failed,,}"
+  __dplus_register_pkg_normalized_install_failed="$(lowercase "${__dplus_register_pkg_helper_install_failed}")"
   __dplus_register_pkg_conflict_detected=false
   case "${__dplus_register_pkg_normalized_install_failed}" in
     true|1|yes)
