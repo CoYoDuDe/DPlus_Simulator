@@ -160,12 +160,12 @@ remember_setup_helper_root() {
 }
 
 detect_setuphelper_version() {
-  __dplus_detect_version_candidates=()
+  __dplus_detect_version_candidates_list=""
   __dplus_detect_helper_cmd=""
   __dplus_detect_candidate=""
 
   if [ -n "${SETUP_HELPER_DETECTED_ROOT:-}" ]; then
-    __dplus_detect_version_candidates+=("${SETUP_HELPER_DETECTED_ROOT}/version")
+    __dplus_detect_version_candidates_list="${SETUP_HELPER_DETECTED_ROOT}/version"
   fi
 
   for __dplus_detect_helper_cmd in setuphelper SetupHelper helperctl; do
@@ -173,20 +173,35 @@ detect_setuphelper_version() {
       __dplus_detect_helper_bin="$(command -v "${__dplus_detect_helper_cmd}")"
       __dplus_detect_helper_root="$(cd "$(dirname "${__dplus_detect_helper_bin}")/.." && pwd -P 2>/dev/null)" || true
       if [ -n "${__dplus_detect_helper_root}" ]; then
-        __dplus_detect_version_candidates+=("${__dplus_detect_helper_root}/version")
+        if [ -n "${__dplus_detect_version_candidates_list}" ]; then
+          __dplus_detect_version_candidates_list="${__dplus_detect_version_candidates_list}
+${__dplus_detect_helper_root}/version"
+        else
+          __dplus_detect_version_candidates_list="${__dplus_detect_helper_root}/version"
+        fi
       fi
     fi
   done
 
-  __dplus_detect_version_candidates+=(
-    "/data/SetupHelper/version"
-    "/opt/venus/SetupHelper/version"
-    "/opt/venusOS/SetupHelper/version"
-    "/usr/share/SetupHelper/version"
-    "${PROJECT_ROOT}/SetupHelper/version"
-  )
+  for __dplus_detect_candidate in \
+    "/data/SetupHelper/version" \
+    "/opt/venus/SetupHelper/version" \
+    "/opt/venusOS/SetupHelper/version" \
+    "/usr/share/SetupHelper/version" \
+    "${PROJECT_ROOT}/SetupHelper/version"; do
+    if [ -n "${__dplus_detect_version_candidates_list}" ]; then
+      __dplus_detect_version_candidates_list="${__dplus_detect_version_candidates_list}
+${__dplus_detect_candidate}"
+    else
+      __dplus_detect_version_candidates_list="${__dplus_detect_candidate}"
+    fi
+  done
 
-  for __dplus_detect_candidate in "${__dplus_detect_version_candidates[@]}"; do
+  if [ -z "${__dplus_detect_version_candidates_list}" ]; then
+    return 1
+  fi
+
+  while IFS= read -r __dplus_detect_candidate; do
     [ -z "${__dplus_detect_candidate}" ] && continue
 
     if [ -f "${__dplus_detect_candidate}" ]; then
@@ -204,7 +219,9 @@ detect_setuphelper_version() {
         fi
       fi
     fi
-  done
+  done <<__DPLUS_DETECT_CANDIDATES_END__
+${__dplus_detect_version_candidates_list}
+__DPLUS_DETECT_CANDIDATES_END__
 
   return 1
 }
