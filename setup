@@ -941,7 +941,7 @@ source_helper_resources() {
     if [ -f "${__dplus_source_helper_candidate}" ] && [ -r "${__dplus_source_helper_candidate}" ]; then
       remember_setup_helper_root "${__dplus_source_helper_candidate}"
       # shellcheck disable=SC1090
-      source "${__dplus_source_helper_candidate}"
+      . "${__dplus_source_helper_candidate}"
       return
     fi
 
@@ -950,14 +950,14 @@ source_helper_resources() {
       if [ -r "${__dplus_source_helper_candidate}/forSetupScript" ]; then
         remember_setup_helper_root "${__dplus_source_helper_candidate}/forSetupScript"
         # shellcheck disable=SC1090
-        source "${__dplus_source_helper_candidate}/forSetupScript"
+        . "${__dplus_source_helper_candidate}/forSetupScript"
         return
       fi
 
       if [ -r "${__dplus_source_helper_candidate}/IncludeHelpers" ]; then
         remember_setup_helper_root "${__dplus_source_helper_candidate}/IncludeHelpers"
         # shellcheck disable=SC1090
-        source "${__dplus_source_helper_candidate}/IncludeHelpers"
+        . "${__dplus_source_helper_candidate}/IncludeHelpers"
         return
       fi
 
@@ -972,7 +972,7 @@ source_helper_resources() {
       for __dplus_source_helper_file in "${__dplus_source_helper_files[@]}"; do
         if [ -r "${__dplus_source_helper_file}" ]; then
           # shellcheck disable=SC1090
-          source "${__dplus_source_helper_file}"
+          . "${__dplus_source_helper_file}"
         else
           __dplus_source_helper_missing=1
           break
