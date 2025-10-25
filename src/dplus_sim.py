@@ -3206,6 +3206,20 @@ async def run_async(args: argparse.Namespace) -> None:
     relay_function_monitor: Optional[RelayFunctionMonitor] = None
     startup_failed = shutdown_event.is_set()
 
+    async def persist_settings(updates: Dict[str, Any]) -> None:
+        if not updates:
+            return
+        payload = dict(updates)
+        if voltage_constraints:
+            for key, expected in voltage_constraints.items():
+                if key in payload:
+                    payload[key] = expected
+        merged_settings.update(payload)
+        if settings_backend is not None:
+            await settings_backend.apply(payload)
+
+    controller.set_relay_backup_persist(persist_settings)
+
     async def mark_voltage_failure(
         message: str,
         *,
@@ -3331,20 +3345,6 @@ async def run_async(args: argparse.Namespace) -> None:
                         voltage_reader.description,
                     )
 
-
-    async def persist_settings(updates: Dict[str, Any]) -> None:
-        if not updates:
-            return
-        payload = dict(updates)
-        if voltage_constraints:
-            for key, expected in voltage_constraints.items():
-                if key in payload:
-                    payload[key] = expected
-        merged_settings.update(payload)
-        if settings_backend is not None:
-            await settings_backend.apply(payload)
-
-    controller.set_relay_backup_persist(persist_settings)
 
     if settings_backend is not None:
 
