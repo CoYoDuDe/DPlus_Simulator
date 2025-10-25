@@ -1295,8 +1295,6 @@ perform_install_preflight() {
   require_setuphelper_version "${REQUIRED_SETUP_HELPER_VERSION}"
   require_python3
   log INFO "python3 wurde gefunden"
-  require_python_module "dbus_next"
-  log INFO "Python-Modul dbus_next ist verfügbar"
 }
 
 perform_install() {
@@ -1308,6 +1306,9 @@ perform_install() {
 
   begin_helper_session
   register_package_dependencies
+
+  require_python_module "dbus_next"
+  log INFO "Python-Modul dbus_next ist verfügbar"
 
   install_payload
   process_file_sets_for_action INSTALL
