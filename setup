@@ -10,7 +10,27 @@ if [ -z "${BASH_VERSION:-}" ]; then
   exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="$0"
+
+SCRIPT_PATH="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd -P)/$(basename "${SCRIPT_PATH}")"
+
+if command -v readlink >/dev/null 2>&1; then
+  while [ -L "${SCRIPT_PATH}" ]; do
+    link_target="$(readlink "${SCRIPT_PATH}")"
+    case "${link_target}" in
+      /*)
+        SCRIPT_PATH="${link_target}"
+        ;;
+      *)
+        link_dir="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd -P)"
+        SCRIPT_PATH="${link_dir}/${link_target}"
+        ;;
+    esac
+    SCRIPT_PATH="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd -P)/$(basename "${SCRIPT_PATH}")"
+  done
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd -P)"
 PROJECT_ROOT="${SCRIPT_DIR}"
 INSTALL_ROOT="${INSTALL_ROOT:-/opt/dplus_sim}"
 SERVICE_NAME="com.coyodude.dplussim"
