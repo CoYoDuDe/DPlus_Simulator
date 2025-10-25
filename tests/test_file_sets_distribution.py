@@ -96,6 +96,51 @@ perform_install
     _cleanup_helper_state(repo_root)
 
 
+def test_install_without_preinstalled_dbus_next(tmp_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    setup_script = repo_root / "setup"
+    install_root = tmp_path / "install"
+    target_root = tmp_path / "target"
+    helper_root = tmp_path / "helper"
+    module_root = tmp_path / "pysite"
+
+    helper_root.mkdir()
+    (helper_root / "version").write_text("8.20\n", encoding="utf-8")
+
+    assert not (module_root / "dbus_next").exists(), "dbus_next darf vor der Installation nicht existieren."
+
+    script = f"""
+set -euo pipefail
+export DPLUS_SIMULATOR_SKIP_MAIN=1
+export INSTALL_ROOT="{install_root}"
+export DPLUS_SIMULATOR_FILESETS_TARGET_ROOT="{target_root}"
+unset PYTHONPATH
+source "{setup_script}"
+SETUP_HELPER_DETECTED_ROOT="{helper_root}"
+source_helper_resources
+SETUP_HELPER_DETECTED_ROOT="{helper_root}"
+scriptAction=INSTALL
+
+checkPackageDependencies() {{
+  mkdir -p "{module_root}/dbus_next"
+  cat <<'PY' > "{module_root}/dbus_next/__init__.py"
+# stub
+PY
+  PYTHONPATH="{module_root}"
+  export PYTHONPATH
+  return 0
+}}
+
+perform_install
+"""
+
+    subprocess.run(["bash", "-c", script], check=True, cwd=repo_root)
+
+    assert (module_root / "dbus_next" / "__init__.py").is_file(), "dbus_next wurde nicht installiert."
+
+    _cleanup_helper_state(repo_root)
+
+
 def test_update_file_sets_uninstall(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     setup_script = repo_root / "setup"
