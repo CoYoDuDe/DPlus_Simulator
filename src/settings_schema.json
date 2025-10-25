@@ -104,6 +104,11 @@
       "type": "string",
       "description": "Spannungspfad der Starterspannung (schreibgeschützt, z. B. /StarterVoltage).",
       "readOnly": true
+    },
+    "relay_function_backups": {
+      "type": "string",
+      "description": "JSON-codiertes Objekt mit den gesicherten Relay-Funktionswerten.",
+      "default": "{}"
     }
   },
   "required": [

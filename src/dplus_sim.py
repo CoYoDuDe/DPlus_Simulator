@@ -314,6 +314,16 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "min": 0,
         "max": 0,
     },
+    "relay_function_backups": {
+        "path": "/Settings/Devices/DPlusSim/RelayFunctionBackups",
+        "type": "s",
+        "default": "{}",
+        "description": (
+            "JSON-kodiertes Objekt, das die ursprünglichen Relay-Funktionen je Kanal sichert."
+        ),
+        "min": 0,
+        "max": 0,
+    },
 }
 
 DEFAULT_SETTINGS: Dict[str, Any] = {

@@ -35,6 +35,7 @@ MbPage {
         function refreshRelayOptions() {
                 var options = []
                 var validChannels = {}
+                var cleaned = false
                 for (var i = 0; i < relayModel.count; ++i) {
                         var entry = relayModel.get(i)
                         if (!entry)
@@ -54,9 +55,12 @@ MbPage {
                         if (validChannels[channel])
                                 continue
                         delete root.relayFunctionRestoreValues[channel]
+                        cleaned = true
                 }
                 if (root.lastTaggedRelay && !validChannels[root.lastTaggedRelay])
                         root.lastTaggedRelay = ""
+                if (cleaned)
+                        persistRelayBackups()
         }
 
         function veItemHasValidValue(item) {
@@ -134,6 +138,7 @@ MbPage {
         }
 
         Component.onCompleted: {
+                loadRelayBackups()
                 refreshRelayOptions()
                 root.relayValueReady = veItemHasValidValue(relaySelector.item)
                 root.outputModeReady = veItemHasValidValue(outputModeOptions.item)
@@ -335,6 +340,71 @@ MbPage {
                 return DPlusUtils.path(settingsPrefix, suffix)
         }
 
+        function relayBackupsPath() {
+                return settingsPath("RelayFunctionBackups")
+        }
+
+        function loadRelayBackups() {
+                var item = Qt.createQmlObject('import com.victron.velib 1.0; VeQuickItem {}', root)
+                item.source = relayBackupsPath()
+                var raw = ""
+                if (item && item.value !== undefined && item.value !== null)
+                        raw = item.value.toString()
+                if (item)
+                        item.destroy()
+
+                var parsed = {}
+                if (raw && raw.length) {
+                        try {
+                                var candidate = JSON.parse(raw)
+                                if (candidate && typeof candidate === "object") {
+                                        for (var key in candidate) {
+                                                if (!candidate.hasOwnProperty(key))
+                                                        continue
+                                                var value = candidate[key]
+                                                if (value === undefined || value === null)
+                                                        continue
+                                                parsed[key.toString()] = value.toString()
+                                        }
+                                }
+                        } catch (error) {
+                                console.warn("Persistierte Relay-Backups konnten nicht geladen werden:", error)
+                        }
+                }
+
+                root.relayFunctionRestoreValues = parsed
+        }
+
+        function persistRelayBackups() {
+                var sanitized = {}
+                if (root.relayFunctionRestoreValues && typeof root.relayFunctionRestoreValues === "object") {
+                        for (var channel in root.relayFunctionRestoreValues) {
+                                if (!root.relayFunctionRestoreValues.hasOwnProperty(channel))
+                                        continue
+                                var value = root.relayFunctionRestoreValues[channel]
+                                if (value === undefined || value === null)
+                                        continue
+                                sanitized[channel.toString()] = value.toString()
+                        }
+                }
+
+                var payload = "{}"
+                try {
+                        payload = JSON.stringify(sanitized)
+                } catch (error) {
+                        console.warn("Persistierte Relay-Backups konnten nicht serialisiert werden:", error)
+                }
+
+                root.relayFunctionRestoreValues = sanitized
+
+                var item = Qt.createQmlObject('import com.victron.velib 1.0; VeQuickItem {}', root)
+                item.source = relayBackupsPath()
+                if (item && item.setValue)
+                        item.setValue(payload)
+                if (item)
+                        item.destroy()
+        }
+
         function relayFunctionPath(channel) {
                 if (!channel || !channel.toString().length)
                         return ""
@@ -368,25 +438,41 @@ MbPage {
         function cacheRelayFunction(channel) {
                 if (!channel || !channel.length)
                         return
-                if (root.relayFunctionRestoreValues[channel] !== undefined)
-                        return
+
                 var existing = readFunctionValue(relayFunctionPath(channel))
-                if (existing === root.relayFunctionTag)
-                        existing = root.relayFunctionNeutral
-                if (!existing || !existing.length)
-                        existing = root.relayFunctionNeutral
-                root.relayFunctionRestoreValues[channel] = existing
+                var previous = root.relayFunctionRestoreValues[channel]
+                var resolved = existing
+
+                if (resolved === root.relayFunctionTag) {
+                        if (previous !== undefined)
+                                resolved = previous
+                        else
+                                resolved = root.relayFunctionNeutral
+                }
+
+                if (!resolved || !resolved.length)
+                        resolved = root.relayFunctionNeutral
+
+                if (previous === resolved)
+                        return
+
+                root.relayFunctionRestoreValues[channel] = resolved
+                persistRelayBackups()
         }
 
         function restoreRelayFunction(channel, fallbackToNeutral) {
                 if (!channel || !channel.length)
                         return
                 var stored = root.relayFunctionRestoreValues[channel]
-                if (stored === undefined && fallbackToNeutral)
+                var hadStored = stored !== undefined
+                if (!hadStored && fallbackToNeutral)
                         stored = root.relayFunctionNeutral
                 if (stored !== undefined) {
                         writeFunctionValue(relayFunctionPath(channel), stored)
-                        delete root.relayFunctionRestoreValues[channel]
+                        if (hadStored) {
+                                delete root.relayFunctionRestoreValues[channel]
+                                persistRelayBackups()
+                        }
                 }
         }
 
@@ -394,8 +480,10 @@ MbPage {
                 if (!channel || !channel.length)
                         return
                 writeFunctionValue(relayFunctionPath(channel), root.relayFunctionNeutral)
-                if (root.relayFunctionRestoreValues[channel] !== undefined)
+                if (root.relayFunctionRestoreValues[channel] !== undefined) {
                         delete root.relayFunctionRestoreValues[channel]
+                        persistRelayBackups()
+                }
         }
 
         function ensureExclusiveRelayFunction(activeChannel) {
