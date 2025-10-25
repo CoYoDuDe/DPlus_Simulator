@@ -104,25 +104,25 @@ resolve_setup_helper_root_from_candidate() (
   __dplus_resolve_candidate="$1"
   __dplus_resolve_base=""
 
-  if [[ -z "${__dplus_resolve_candidate}" ]]; then
+  if [ -z "${__dplus_resolve_candidate}" ]; then
     return 1
   fi
 
-  if [[ -f "${__dplus_resolve_candidate}" ]]; then
+  if [ -f "${__dplus_resolve_candidate}" ]; then
     __dplus_resolve_base="$(cd "$(dirname "${__dplus_resolve_candidate}")" && pwd -P 2>/dev/null)" || return 1
   else
     __dplus_resolve_base="$(cd "${__dplus_resolve_candidate}" && pwd -P 2>/dev/null)" || return 1
   fi
 
-  if [[ -z "${__dplus_resolve_base}" ]]; then
+  if [ -z "${__dplus_resolve_base}" ]; then
     return 1
   fi
 
-  if [[ "${__dplus_resolve_base##*/}" == "HelperResources" ]]; then
+  if [ "${__dplus_resolve_base##*/}" = "HelperResources" ]; then
     __dplus_resolve_base="$(cd "${__dplus_resolve_base}/.." && pwd -P 2>/dev/null)" || return 1
   fi
 
-  if [[ -n "${__dplus_resolve_base}" ]]; then
+  if [ -n "${__dplus_resolve_base}" ]; then
     printf '%s\n' "${__dplus_resolve_base}"
     return 0
   fi
@@ -134,12 +134,12 @@ remember_setup_helper_root() {
   __dplus_remember_candidate="$1"
   __dplus_remember_resolved=""
 
-  if [[ -z "${__dplus_remember_candidate}" ]]; then
+  if [ -z "${__dplus_remember_candidate}" ]; then
     return
   fi
 
   if __dplus_remember_resolved="$(resolve_setup_helper_root_from_candidate "${__dplus_remember_candidate}")"; then
-    if [[ -n "${__dplus_remember_resolved}" ]]; then
+    if [ -n "${__dplus_remember_resolved}" ]; then
       SETUP_HELPER_DETECTED_ROOT="${__dplus_remember_resolved}"
     fi
   fi
@@ -150,7 +150,7 @@ detect_setuphelper_version() {
   __dplus_detect_helper_cmd=""
   __dplus_detect_candidate=""
 
-  if [[ -n "${SETUP_HELPER_DETECTED_ROOT:-}" ]]; then
+  if [ -n "${SETUP_HELPER_DETECTED_ROOT:-}" ]; then
     __dplus_detect_version_candidates+=("${SETUP_HELPER_DETECTED_ROOT}/version")
   fi
 
@@ -158,7 +158,7 @@ detect_setuphelper_version() {
     if command -v "${__dplus_detect_helper_cmd}" >/dev/null 2>&1; then
       __dplus_detect_helper_bin="$(command -v "${__dplus_detect_helper_cmd}")"
       __dplus_detect_helper_root="$(cd "$(dirname "${__dplus_detect_helper_bin}")/.." && pwd -P 2>/dev/null)" || true
-      if [[ -n "${__dplus_detect_helper_root}" ]]; then
+      if [ -n "${__dplus_detect_helper_root}" ]; then
         __dplus_detect_version_candidates+=("${__dplus_detect_helper_root}/version")
       fi
     fi
@@ -173,18 +173,18 @@ detect_setuphelper_version() {
   )
 
   for __dplus_detect_candidate in "${__dplus_detect_version_candidates[@]}"; do
-    [[ -z "${__dplus_detect_candidate}" ]] && continue
+    [ -z "${__dplus_detect_candidate}" ] && continue
 
-    if [[ -f "${__dplus_detect_candidate}" ]]; then
+    if [ -f "${__dplus_detect_candidate}" ]; then
       __dplus_detect_raw_version="$(<"${__dplus_detect_candidate}")"
       __dplus_detect_raw_version="${__dplus_detect_raw_version//$'\r'/}"
       __dplus_detect_raw_version="${__dplus_detect_raw_version//$'\n'/}"
       __dplus_detect_raw_version="$(trim_whitespace "${__dplus_detect_raw_version}")"
 
-      if [[ -n "${__dplus_detect_raw_version}" ]]; then
+      if [ -n "${__dplus_detect_raw_version}" ]; then
         SETUP_HELPER_VERSION_RAW="${__dplus_detect_raw_version}"
         __dplus_detect_normalized="$(normalize_version_string "${__dplus_detect_raw_version}")"
-        if [[ -n "${__dplus_detect_normalized}" ]]; then
+        if [ -n "${__dplus_detect_normalized}" ]; then
           SETUP_HELPER_VERSION_NORMALIZED="${__dplus_detect_normalized}"
           return 0
         fi
@@ -282,7 +282,7 @@ version_ge() (
 require_setuphelper_version() {
   __dplus_require_setuphelper_version_required="$1"
 
-  if [[ -z "${__dplus_require_setuphelper_version_required}" ]]; then
+  if [ -z "${__dplus_require_setuphelper_version_required}" ]; then
     return
   fi
 
@@ -290,7 +290,7 @@ require_setuphelper_version() {
     die "SetupHelper-Version konnte nicht ermittelt werden. Bitte installieren Sie SetupHelper >= ${__dplus_require_setuphelper_version_required}."
   fi
 
-  if [[ -z "${SETUP_HELPER_VERSION_NORMALIZED}" ]]; then
+  if [ -z "${SETUP_HELPER_VERSION_NORMALIZED}" ]; then
     die "SetupHelper-Version konnte nicht interpretiert werden."
   fi
 
@@ -310,7 +310,7 @@ require_python3() {
 require_python_module() {
   __dplus_require_python_module_name="$1"
 
-  if [[ -z "${__dplus_require_python_module_name}" ]]; then
+  if [ -z "${__dplus_require_python_module_name}" ]; then
     return
   fi
 
@@ -331,8 +331,8 @@ PY
   __dplus_require_python_module_status=$?
   set -e
 
-  if (( __dplus_require_python_module_status != 0 )); then
-    if [[ -n "${__dplus_require_python_module_output}" ]]; then
+  if [ "${__dplus_require_python_module_status}" -ne 0 ]; then
+    if [ -n "${__dplus_require_python_module_output}" ]; then
       log ERROR "python3 -c 'import ${__dplus_require_python_module_name}' fehlgeschlagen: ${__dplus_require_python_module_output}"
     fi
     die "Das Python-Modul ${__dplus_require_python_module_name} ist nicht verfügbar. Installieren Sie die Komponente und versuchen Sie es erneut."
@@ -346,7 +346,7 @@ copy_tree() {
   if command -v rsync >/dev/null 2>&1; then
     rsync -a --delete "${__dplus_copy_tree_src}/" "${__dplus_copy_tree_dest}/"
   else
-    if [[ -d "${__dplus_copy_tree_dest}" ]]; then
+    if [ -d "${__dplus_copy_tree_dest}" ]; then
       find "${__dplus_copy_tree_dest}" -mindepth 1 -exec rm -rf {} +
     fi
     tar -C "${__dplus_copy_tree_src}" -cf - . | tar -C "${__dplus_copy_tree_dest}" -xf -
@@ -358,9 +358,9 @@ process_file_sets_for_action() {
   __dplus_process_filesets_action_upper="${__dplus_process_filesets_desired^^}"
 
   __dplus_process_filesets_root=""
-  if [[ -d "${INSTALL_ROOT}/FileSets" ]]; then
+  if [ -d "${INSTALL_ROOT}/FileSets" ]; then
     __dplus_process_filesets_root="${INSTALL_ROOT}/FileSets"
-  elif [[ -d "${PROJECT_ROOT}/FileSets" ]]; then
+  elif [ -d "${PROJECT_ROOT}/FileSets" ]; then
     __dplus_process_filesets_root="${PROJECT_ROOT}/FileSets"
   else
     log INFO "Keine FileSets gefunden – überspringe updateFileSets"
@@ -380,32 +380,32 @@ process_file_sets_for_action() {
   __dplus_process_filesets_had_package_name=0
   __dplus_process_filesets_had_action=0
 
-  if [[ -v pkgFileSets ]]; then __dplus_process_filesets_had_pkgFileSets=1; fi
-  if [[ -v versionIndependentFileSet ]]; then __dplus_process_filesets_had_version_independent=1; fi
-  if [[ -v patchSourceDir ]]; then __dplus_process_filesets_had_patch_dir=1; fi
-  if [[ -v fileSet ]]; then __dplus_process_filesets_had_file_set=1; fi
-  if [[ -v packageName ]]; then __dplus_process_filesets_had_package_name=1; fi
-  if [[ -v scriptAction ]]; then __dplus_process_filesets_had_action=1; fi
+  if [ "${pkgFileSets+set}" = set ]; then __dplus_process_filesets_had_pkgFileSets=1; fi
+  if [ "${versionIndependentFileSet+set}" = set ]; then __dplus_process_filesets_had_version_independent=1; fi
+  if [ "${patchSourceDir+set}" = set ]; then __dplus_process_filesets_had_patch_dir=1; fi
+  if [ "${fileSet+set}" = set ]; then __dplus_process_filesets_had_file_set=1; fi
+  if [ "${packageName+set}" = set ]; then __dplus_process_filesets_had_package_name=1; fi
+  if [ "${scriptAction+set}" = set ]; then __dplus_process_filesets_had_action=1; fi
 
   pkgFileSets="${__dplus_process_filesets_root}"
   versionIndependentFileSet="${__dplus_process_filesets_root}/VersionIndependent"
   patchSourceDir="${__dplus_process_filesets_root}/PatchSource"
   fileSet="${__dplus_process_filesets_root}/${venusVersion-}"
 
-  if [[ -n "${__dplus_process_filesets_previous_package_name}" ]]; then
+  if [ -n "${__dplus_process_filesets_previous_package_name}" ]; then
     packageName="${__dplus_process_filesets_previous_package_name}"
   else
     packageName="DPlus_Simulator"
   fi
 
-  if [[ -n "${__dplus_process_filesets_action_upper}" ]]; then
+  if [ -n "${__dplus_process_filesets_action_upper}" ]; then
     scriptAction="${__dplus_process_filesets_action_upper}"
   fi
 
   __dplus_process_filesets_status=127
   if ! call_helper_function_if_available checkFileSets; then
     __dplus_process_filesets_status=$?
-    if (( __dplus_process_filesets_status != 127 )); then
+    if [ "${__dplus_process_filesets_status}" -ne 127 ]; then
       log WARN "checkFileSets meldete Status ${__dplus_process_filesets_status}"
     fi
   fi
@@ -413,42 +413,42 @@ process_file_sets_for_action() {
   __dplus_process_filesets_status=127
   if ! call_helper_function_if_available updateFileSets; then
     __dplus_process_filesets_status=$?
-    if (( __dplus_process_filesets_status != 127 )); then
+    if [ "${__dplus_process_filesets_status}" -ne 127 ]; then
       log WARN "updateFileSets meldete Status ${__dplus_process_filesets_status}"
     fi
   fi
 
-  if [[ -n "${__dplus_process_filesets_previous_action}" ]]; then
+  if [ -n "${__dplus_process_filesets_previous_action}" ]; then
     scriptAction="${__dplus_process_filesets_previous_action}"
-  elif (( __dplus_process_filesets_had_action == 0 )); then
+  elif [ "${__dplus_process_filesets_had_action}" -eq 0 ]; then
     unset scriptAction 2>/dev/null || true
   fi
 
-  if (( __dplus_process_filesets_had_pkgFileSets )); then
+  if [ "${__dplus_process_filesets_had_pkgFileSets}" -ne 0 ]; then
     pkgFileSets="${__dplus_process_filesets_previous_pkgFileSets}"
   else
     unset pkgFileSets 2>/dev/null || true
   fi
 
-  if (( __dplus_process_filesets_had_version_independent )); then
+  if [ "${__dplus_process_filesets_had_version_independent}" -ne 0 ]; then
     versionIndependentFileSet="${__dplus_process_filesets_previous_version_independent}"
   else
     unset versionIndependentFileSet 2>/dev/null || true
   fi
 
-  if (( __dplus_process_filesets_had_patch_dir )); then
+  if [ "${__dplus_process_filesets_had_patch_dir}" -ne 0 ]; then
     patchSourceDir="${__dplus_process_filesets_previous_patch_dir}"
   else
     unset patchSourceDir 2>/dev/null || true
   fi
 
-  if (( __dplus_process_filesets_had_file_set )); then
+  if [ "${__dplus_process_filesets_had_file_set}" -ne 0 ]; then
     fileSet="${__dplus_process_filesets_previous_file_set}"
   else
     unset fileSet 2>/dev/null || true
   fi
 
-  if (( __dplus_process_filesets_had_package_name )); then
+  if [ "${__dplus_process_filesets_had_package_name}" -ne 0 ]; then
     packageName="${__dplus_process_filesets_previous_package_name}"
   else
     unset packageName 2>/dev/null || true
@@ -470,7 +470,7 @@ call_helper_function_if_available() {
 }
 
 define_builtin_helper_fallback() {
-  if [[ -n "${__DPLUS_HELPER_FALLBACK_DEFINED:-}" ]]; then
+  if [ -n "${__DPLUS_HELPER_FALLBACK_DEFINED:-}" ]; then
     return
   fi
 
@@ -498,7 +498,7 @@ define_builtin_helper_fallback() {
 
   helper_end() {
     __dplus_helper_end_flags="$*"
-    if [[ -n "${__dplus_helper_end_flags}" ]]; then
+    if [ -n "${__dplus_helper_end_flags}" ]; then
       logMessage INFO "Beende Helper-Sitzung (Flags: ${__dplus_helper_end_flags})"
     else
       logMessage INFO "Beende Helper-Sitzung"
@@ -526,7 +526,7 @@ define_builtin_helper_fallback() {
   __dplus_helper_store_dependencies() {
     __dplus_helper_store_dependencies_src="$1"
     __dplus_helper_store_dependencies_dest="${__dplus_helper_state_dir}/packageDependencies"
-    if [[ ! -r "${__dplus_helper_store_dependencies_src}" ]]; then
+    if [ ! -r "${__dplus_helper_store_dependencies_src}" ]; then
       logMessage ERROR "packageDependencies-Datei ${__dplus_helper_store_dependencies_src} ist nicht lesbar"
       return 1
     fi
@@ -545,7 +545,7 @@ define_builtin_helper_fallback() {
 
   checkPackageDependencies() {
     __dplus_helper_check_pkg_src="${1:-${__dplus_helper_project_root}/packageDependencies}"
-    if [[ -z "${__dplus_helper_check_pkg_src}" ]]; then
+    if [ -z "${__dplus_helper_check_pkg_src}" ]; then
       __dplus_helper_check_pkg_src="${__dplus_helper_project_root}/packageDependencies"
     fi
     __dplus_helper_store_dependencies "${__dplus_helper_check_pkg_src}"
@@ -572,11 +572,11 @@ define_builtin_helper_fallback() {
   helper_install_service() {
     __dplus_helper_install_service_name="$1"
     __dplus_helper_install_service_dir="$2"
-    if [[ -z "${__dplus_helper_install_service_name}" || -z "${__dplus_helper_install_service_dir}" ]]; then
+    if [ -z "${__dplus_helper_install_service_name}" ] || [ -z "${__dplus_helper_install_service_dir}" ]; then
       logMessage ERROR "Ungültige Parameter für helper_install_service"
       return 1
     fi
-    if [[ ! -d "${__dplus_helper_install_service_dir}" ]]; then
+    if [ ! -d "${__dplus_helper_install_service_dir}" ]; then
       logMessage ERROR "Dienstverzeichnis ${__dplus_helper_install_service_dir} existiert nicht"
       return 1
     fi
@@ -602,7 +602,7 @@ define_builtin_helper_fallback() {
 
   helper_print_service_status() {
     __dplus_helper_print_status_service_name="$1"
-    if [[ -L "${__dplus_helper_service_state_dir}/${__dplus_helper_print_status_service_name}" ]]; then
+    if [ -L "${__dplus_helper_service_state_dir}/${__dplus_helper_print_status_service_name}" ]; then
       printf 'Dienst %s ist lokal verknüpft.\n' "${__dplus_helper_print_status_service_name}"
     else
       printf 'Dienst %s ist nicht verknüpft.\n' "${__dplus_helper_print_status_service_name}"
@@ -611,7 +611,7 @@ define_builtin_helper_fallback() {
 
   serviceIsUp() {
     __dplus_helper_service_is_up_name="$1"
-    if [[ -L "${__dplus_helper_service_state_dir}/${__dplus_helper_service_is_up_name}" ]]; then
+    if [ -L "${__dplus_helper_service_state_dir}/${__dplus_helper_service_is_up_name}" ]; then
       return 0
     fi
     return 1
@@ -629,10 +629,10 @@ define_builtin_helper_fallback() {
 
   __dplus_helper_filesets_root() (
     __dplus_helper_filesets_root_value="${pkgFileSets-}"
-    if [[ -z "${__dplus_helper_filesets_root_value}" ]]; then
-      if [[ -d "${INSTALL_ROOT:-}/FileSets" ]]; then
+    if [ -z "${__dplus_helper_filesets_root_value}" ]; then
+      if [ -d "${INSTALL_ROOT:-}/FileSets" ]; then
         __dplus_helper_filesets_root_value="${INSTALL_ROOT}/FileSets"
-      elif [[ -d "${__dplus_helper_project_root}/FileSets" ]]; then
+      elif [ -d "${__dplus_helper_project_root}/FileSets" ]; then
         __dplus_helper_filesets_root_value="${__dplus_helper_project_root}/FileSets"
       else
         __dplus_helper_filesets_root_value=""
@@ -642,8 +642,8 @@ define_builtin_helper_fallback() {
   )
 
   __dplus_helper_filesets_target_root="${DPLUS_SIMULATOR_FILESETS_TARGET_ROOT:-}"
-  if [[ -z "${__dplus_helper_filesets_target_root}" ]]; then
-    if [[ -n "${INSTALL_ROOT:-}" ]]; then
+  if [ -z "${__dplus_helper_filesets_target_root}" ]; then
+    if [ -n "${INSTALL_ROOT:-}" ]; then
       __dplus_helper_filesets_target_root="${INSTALL_ROOT}/filesets-target"
     else
       __dplus_helper_filesets_target_root="${__dplus_helper_project_root}/.install/filesets-target"
@@ -653,7 +653,7 @@ define_builtin_helper_fallback() {
   __dplus_helper_resolve_target_path() {
     __dplus_helper_resolve_absolute_path="$1"
     __dplus_helper_resolve_trimmed="$(__dplus_helper_trim "${__dplus_helper_resolve_absolute_path}")"
-    if [[ -z "${__dplus_helper_resolve_trimmed}" ]]; then
+    if [ -z "${__dplus_helper_resolve_trimmed}" ]; then
       return 1
     fi
     __dplus_helper_resolve_trimmed="${__dplus_helper_resolve_trimmed#/}"
@@ -663,7 +663,7 @@ define_builtin_helper_fallback() {
   __dplus_helper_copy_file_if_present() {
     __dplus_helper_copy_source="$1"
     __dplus_helper_copy_destination="$2"
-    if [[ ! -f "${__dplus_helper_copy_source}" ]]; then
+    if [ ! -f "${__dplus_helper_copy_source}" ]; then
       logMessage WARN "Fallback: Quelldatei ${__dplus_helper_copy_source} nicht gefunden"
       return 1
     fi
@@ -674,7 +674,7 @@ define_builtin_helper_fallback() {
 
   checkFileSets() {
     __dplus_helper_check_filesets_root_value="$(__dplus_helper_filesets_root)"
-    if [[ -z "${__dplus_helper_check_filesets_root_value}" || ! -d "${__dplus_helper_check_filesets_root_value}" ]]; then
+    if [ -z "${__dplus_helper_check_filesets_root_value}" ] || [ ! -d "${__dplus_helper_check_filesets_root_value}" ]; then
       logMessage INFO "Fallback: Keine FileSets gefunden – überspringe Prüfung"
       return 0
     fi
@@ -686,7 +686,7 @@ define_builtin_helper_fallback() {
 
   updateFileSets() {
     __dplus_helper_update_root="$(__dplus_helper_filesets_root)"
-    if [[ -z "${__dplus_helper_update_root}" || ! -d "${__dplus_helper_update_root}" ]]; then
+    if [ -z "${__dplus_helper_update_root}" ] || [ ! -d "${__dplus_helper_update_root}" ]; then
       logMessage INFO "Fallback: Keine FileSets gefunden – überspringe Aktualisierung"
       return 0
     fi
@@ -701,21 +701,28 @@ define_builtin_helper_fallback() {
     printf '%s\n' "${__dplus_helper_update_root}" > "${__dplus_helper_filesets_state_dir}/last_source"
 
     __dplus_helper_update_list_file="${__dplus_helper_update_root}/fileListVersionIndependent"
-    if [[ -f "${__dplus_helper_update_list_file}" ]]; then
+    if [ -f "${__dplus_helper_update_list_file}" ]; then
       while IFS= read -r entry; do
         entry="$(__dplus_helper_trim "${entry}")"
-        [[ -z "${entry}" || "${entry}" == \#* ]] && continue
+        if [ -z "${entry}" ]; then
+          continue
+        fi
+        case "${entry}" in
+          \#*)
+            continue
+            ;;
+        esac
         __dplus_helper_update_destination="$(__dplus_helper_resolve_target_path "${entry}")" || continue
-        if [[ "${__dplus_helper_update_action}" == "UNINSTALL" ]]; then
+        if [ "${__dplus_helper_update_action}" = "UNINSTALL" ]; then
           rm -f "${__dplus_helper_update_destination}"
           printf '%s\n' "remove:${__dplus_helper_update_destination}" >> "${__dplus_helper_filesets_state_dir}/last_files"
           continue
         fi
         __dplus_helper_update_base="${entry##*/}"
         __dplus_helper_update_source=""
-        if [[ -f "${__dplus_helper_update_version_independent_dir}/${__dplus_helper_update_base}" ]]; then
+        if [ -f "${__dplus_helper_update_version_independent_dir}/${__dplus_helper_update_base}" ]; then
           __dplus_helper_update_source="${__dplus_helper_update_version_independent_dir}/${__dplus_helper_update_base}"
-        elif [[ -f "${__dplus_helper_update_root}/${__dplus_helper_update_base}" ]]; then
+        elif [ -f "${__dplus_helper_update_root}/${__dplus_helper_update_base}" ]; then
           __dplus_helper_update_source="${__dplus_helper_update_root}/${__dplus_helper_update_base}"
         fi
         if __dplus_helper_copy_file_if_present "${__dplus_helper_update_source}" "${__dplus_helper_update_destination}"; then
@@ -725,15 +732,22 @@ define_builtin_helper_fallback() {
     fi
 
     __dplus_helper_update_patched_list="${__dplus_helper_update_root}/fileListPatched"
-    if [[ -f "${__dplus_helper_update_patched_list}" ]]; then
+    if [ -f "${__dplus_helper_update_patched_list}" ]; then
       while IFS= read -r entry; do
         entry="$(__dplus_helper_trim "${entry}")"
-        [[ -z "${entry}" || "${entry}" == \#* ]] && continue
+        if [ -z "${entry}" ]; then
+          continue
+        fi
+        case "${entry}" in
+          \#*)
+            continue
+            ;;
+        esac
         __dplus_helper_update_destination="$(__dplus_helper_resolve_target_path "${entry}")" || continue
         __dplus_helper_update_base="${entry##*/}"
-        if [[ "${__dplus_helper_update_action}" == "UNINSTALL" ]]; then
+        if [ "${__dplus_helper_update_action}" = "UNINSTALL" ]; then
           __dplus_helper_update_orig_file="${__dplus_helper_update_patch_dir}/${__dplus_helper_update_base}.orig"
-          if [[ -f "${__dplus_helper_update_orig_file}" ]]; then
+          if [ -f "${__dplus_helper_update_orig_file}" ]; then
             if __dplus_helper_copy_file_if_present "${__dplus_helper_update_orig_file}" "${__dplus_helper_update_destination}"; then
               printf '%s\n' "restore:${__dplus_helper_update_destination}" >> "${__dplus_helper_filesets_state_dir}/last_files"
             fi
@@ -745,7 +759,7 @@ define_builtin_helper_fallback() {
         fi
 
         __dplus_helper_update_patched_file="${__dplus_helper_update_patch_dir}/${__dplus_helper_update_base}"
-        if [[ -f "${__dplus_helper_update_patched_file}" ]]; then
+        if [ -f "${__dplus_helper_update_patched_file}" ]; then
           if __dplus_helper_copy_file_if_present "${__dplus_helper_update_patched_file}" "${__dplus_helper_update_destination}"; then
             printf '%s\n' "patch:${__dplus_helper_update_destination}" >> "${__dplus_helper_filesets_state_dir}/last_files"
           fi
@@ -754,7 +768,7 @@ define_builtin_helper_fallback() {
 
         __dplus_helper_update_orig_file="${__dplus_helper_update_patch_dir}/${__dplus_helper_update_base}.orig"
         __dplus_helper_update_patch_file="${__dplus_helper_update_patch_dir}/${__dplus_helper_update_base}.patch"
-        if [[ -f "${__dplus_helper_update_orig_file}" && -f "${__dplus_helper_update_patch_file}" ]]; then
+        if [ -f "${__dplus_helper_update_orig_file}" ] && [ -f "${__dplus_helper_update_patch_file}" ]; then
           __dplus_helper_update_temp_file="${__dplus_helper_update_destination}.tmp"
           cp "${__dplus_helper_update_orig_file}" "${__dplus_helper_update_temp_file}"
           if patch -s "${__dplus_helper_update_temp_file}" "${__dplus_helper_update_patch_file}"; then
@@ -788,7 +802,7 @@ define_builtin_helper_fallback() {
 
   addAllDbusSettingsFromFile() {
     __dplus_helper_add_settings_file="$1"
-    if [[ ! -r "${__dplus_helper_add_settings_file}" ]]; then
+    if [ ! -r "${__dplus_helper_add_settings_file}" ]; then
       logMessage ERROR "D-Bus-Definition ${__dplus_helper_add_settings_file} ist nicht lesbar"
       return 1
     fi
@@ -799,7 +813,7 @@ define_builtin_helper_fallback() {
   }
 
   addAllDbusSettings() {
-    if [[ $# -eq 1 && -f "$1" ]]; then
+    if [ "$#" -eq 1 ] && [ -f "$1" ]; then
       addAllDbusSettingsFromFile "$1"
       return $?
     fi
@@ -811,7 +825,7 @@ define_builtin_helper_fallback() {
 
   removeDbusSettingsFromFile() {
     __dplus_helper_remove_settings_file="$1"
-    if [[ -f "${__dplus_helper_settings_state_dir}/registered_from_file.list" ]]; then
+    if [ -f "${__dplus_helper_settings_state_dir}/registered_from_file.list" ]; then
       rm -f "${__dplus_helper_settings_state_dir}/registered_from_file.list"
       logMessage INFO "Deregistriere D-Bus-Einstellungen (Datei ${__dplus_helper_remove_settings_file})"
     else
@@ -821,7 +835,7 @@ define_builtin_helper_fallback() {
   }
 
   removeDbusSettings() {
-    if [[ $# -eq 1 && -f "$1" ]]; then
+    if [ "$#" -eq 1 ] && [ -f "$1" ]; then
       removeDbusSettingsFromFile "$1"
       return 0
     fi
@@ -858,15 +872,15 @@ source_helper_resources() {
 
   SETUP_HELPER_DETECTED_ROOT=""
 
-  if [[ -n "${SETUP_HELPER_ROOT:-}" ]]; then
-    if [[ -d "${SETUP_HELPER_ROOT}" ]]; then
+  if [ -n "${SETUP_HELPER_ROOT:-}" ]; then
+    if [ -d "${SETUP_HELPER_ROOT}" ]; then
       __dplus_source_helper_candidates+=("${SETUP_HELPER_ROOT}/HelperResources")
-    elif [[ -f "${SETUP_HELPER_ROOT}" ]]; then
+    elif [ -f "${SETUP_HELPER_ROOT}" ]; then
       __dplus_source_helper_candidates+=("${SETUP_HELPER_ROOT}")
     fi
   fi
 
-  if [[ -n "${HELPER_RESOURCE:-}" ]]; then
+  if [ -n "${HELPER_RESOURCE:-}" ]; then
     __dplus_source_helper_candidates+=("${HELPER_RESOURCE}")
   fi
 
@@ -883,32 +897,32 @@ source_helper_resources() {
     if command -v "${__dplus_source_helper_cmd}" >/dev/null 2>&1; then
       __dplus_source_helper_bin="$(command -v "${__dplus_source_helper_cmd}")"
       __dplus_source_helper_root="$(cd "$(dirname "${__dplus_source_helper_bin}")/.." && pwd -P 2>/dev/null)"
-      if [[ -n "${__dplus_source_helper_root}" ]]; then
+      if [ -n "${__dplus_source_helper_root}" ]; then
         __dplus_source_helper_candidates+=("${__dplus_source_helper_root}/HelperResources")
       fi
     fi
   done
 
   for __dplus_source_helper_candidate in "${__dplus_source_helper_candidates[@]}"; do
-    [[ -z "${__dplus_source_helper_candidate}" ]] && continue
+    [ -z "${__dplus_source_helper_candidate}" ] && continue
 
-    if [[ -f "${__dplus_source_helper_candidate}" && -r "${__dplus_source_helper_candidate}" ]]; then
+    if [ -f "${__dplus_source_helper_candidate}" ] && [ -r "${__dplus_source_helper_candidate}" ]; then
       remember_setup_helper_root "${__dplus_source_helper_candidate}"
       # shellcheck disable=SC1090
       source "${__dplus_source_helper_candidate}"
       return
     fi
 
-    if [[ -d "${__dplus_source_helper_candidate}" ]]; then
+    if [ -d "${__dplus_source_helper_candidate}" ]; then
       remember_setup_helper_root "${__dplus_source_helper_candidate}"
-      if [[ -r "${__dplus_source_helper_candidate}/forSetupScript" ]]; then
+      if [ -r "${__dplus_source_helper_candidate}/forSetupScript" ]; then
         remember_setup_helper_root "${__dplus_source_helper_candidate}/forSetupScript"
         # shellcheck disable=SC1090
         source "${__dplus_source_helper_candidate}/forSetupScript"
         return
       fi
 
-      if [[ -r "${__dplus_source_helper_candidate}/IncludeHelpers" ]]; then
+      if [ -r "${__dplus_source_helper_candidate}/IncludeHelpers" ]; then
         remember_setup_helper_root "${__dplus_source_helper_candidate}/IncludeHelpers"
         # shellcheck disable=SC1090
         source "${__dplus_source_helper_candidate}/IncludeHelpers"
@@ -924,7 +938,7 @@ source_helper_resources() {
       __dplus_source_helper_file=""
       __dplus_source_helper_missing=0
       for __dplus_source_helper_file in "${__dplus_source_helper_files[@]}"; do
-        if [[ -r "${__dplus_source_helper_file}" ]]; then
+        if [ -r "${__dplus_source_helper_file}" ]; then
           # shellcheck disable=SC1090
           source "${__dplus_source_helper_file}"
         else
@@ -933,7 +947,7 @@ source_helper_resources() {
         fi
       done
 
-      if (( __dplus_source_helper_missing == 0 )); then
+      if [ "${__dplus_source_helper_missing}" -eq 0 ]; then
         return
       fi
     fi
@@ -965,13 +979,13 @@ end_helper_session() {
 finalize_helper_session() {
   __dplus_finalize_helper_flags=()
 
-  if [[ "${filesUpdated}" == true ]]; then
+  if [ "${filesUpdated}" = true ]; then
     __dplus_finalize_helper_flags+=("INSTALL_FILES")
   fi
-  if [[ "${servicesUpdated}" == true ]]; then
+  if [ "${servicesUpdated}" = true ]; then
     __dplus_finalize_helper_flags+=("INSTALL_SERVICES")
   fi
-  if [[ "${dbusSettingsUpdated}" == true ]]; then
+  if [ "${dbusSettingsUpdated}" = true ]; then
     __dplus_finalize_helper_flags+=("ADD_DBUS_SETTINGS")
   fi
 
@@ -1007,7 +1021,7 @@ remove_service() {
 
 build_dbus_settings_entries() {
   __dplus_build_dbus_list_path="$1"
-  if [[ ! -f "${__dplus_build_dbus_list_path}" ]]; then
+  if [ ! -f "${__dplus_build_dbus_list_path}" ]; then
     die "settingsList ${__dplus_build_dbus_list_path} nicht gefunden"
   fi
 
@@ -1015,15 +1029,15 @@ build_dbus_settings_entries() {
   __dplus_build_dbus_count=0
   __dplus_build_dbus_line=""
 
-  while IFS= read -r __dplus_build_dbus_line || [[ -n "${__dplus_build_dbus_line}" ]]; do
+  while IFS= read -r __dplus_build_dbus_line || [ -n "${__dplus_build_dbus_line}" ]; do
     __dplus_build_dbus_trimmed="$(trim_whitespace "${__dplus_build_dbus_line}")"
-    if [[ -n "${__dplus_build_dbus_trimmed}" ]]; then
+    if [ -n "${__dplus_build_dbus_trimmed}" ]; then
       __dplus_build_dbus_buffer+="${__dplus_build_dbus_trimmed}"$'\n'
       __dplus_build_dbus_count=$((__dplus_build_dbus_count + 1))
     fi
   done < "${__dplus_build_dbus_list_path}"
 
-  if ((__dplus_build_dbus_count > 0)); then
+  if [ "${__dplus_build_dbus_count}" -gt 0 ]; then
     __dplus_build_dbus_buffer="${__dplus_build_dbus_buffer%$'\n'}"
     _dbus_settings_entries_payload="${__dplus_build_dbus_buffer}"
     _dbus_settings_entry_count=${__dplus_build_dbus_count}
@@ -1038,15 +1052,15 @@ build_dbus_settings_entries() {
 write_dbus_settings_file() {
   __dplus_write_dbus_output_path="$1"
 
-  if (( _dbus_settings_entry_count > 0 )); then
+  if [ "${_dbus_settings_entry_count}" -gt 0 ]; then
     (
       __dplus_write_dbus_line=""
       set --
-      while IFS= read -r __dplus_write_dbus_line || [[ -n "${__dplus_write_dbus_line}" ]]; do
+      while IFS= read -r __dplus_write_dbus_line || [ -n "${__dplus_write_dbus_line}" ]; do
         set -- "$@" "${__dplus_write_dbus_line}"
       done < <(printf '%s\n' "${_dbus_settings_entries_payload}")
 
-      while (( "$#" > 0 )); do
+      while [ "$#" -gt 0 ]; do
         printf '%s\n' "$1"
         shift
       done
@@ -1070,28 +1084,28 @@ cleanup_dbus_settings_state() {
   __dplus_cleanup_staging_file="${DBUS_SETTINGS_STAGING_FILE}"
   __dplus_cleanup_persistent_file="${DBUS_SETTINGS_PERSISTENT_FILE:-${INSTALL_ROOT}/${DBUS_SETTINGS_FILENAME}}"
 
-  if (( __dplus_cleanup_end_status != 0 )); then
-    if [[ -n "${DBUS_SETTINGS_STAGING_BACKUP}" && -f "${DBUS_SETTINGS_STAGING_BACKUP}" ]]; then
+  if [ "${__dplus_cleanup_end_status}" -ne 0 ]; then
+    if [ -n "${DBUS_SETTINGS_STAGING_BACKUP}" ] && [ -f "${DBUS_SETTINGS_STAGING_BACKUP}" ]; then
       mv -f "${DBUS_SETTINGS_STAGING_BACKUP}" "${__dplus_cleanup_staging_file}"
-    elif [[ "${DBUS_SETTINGS_STAGING_CREATED}" == true ]]; then
+    elif [ "${DBUS_SETTINGS_STAGING_CREATED}" = true ]; then
       rm -f "${__dplus_cleanup_staging_file}"
     fi
 
-    if [[ -n "${DBUS_SETTINGS_PERSISTENT_BACKUP}" && -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ]]; then
+    if [ -n "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ] && [ -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ]; then
       mv -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" "${__dplus_cleanup_persistent_file}"
-    elif [[ "${DBUS_SETTINGS_PERSISTENT_UPDATED}" == true ]]; then
+    elif [ "${DBUS_SETTINGS_PERSISTENT_UPDATED}" = true ]; then
       rm -f "${__dplus_cleanup_persistent_file}"
     fi
   else
-    if [[ -n "${DBUS_SETTINGS_STAGING_BACKUP}" && -f "${DBUS_SETTINGS_STAGING_BACKUP}" ]]; then
+    if [ -n "${DBUS_SETTINGS_STAGING_BACKUP}" ] && [ -f "${DBUS_SETTINGS_STAGING_BACKUP}" ]; then
       rm -f "${DBUS_SETTINGS_STAGING_BACKUP}"
     fi
 
-    if [[ -n "${DBUS_SETTINGS_PERSISTENT_BACKUP}" && -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ]]; then
+    if [ -n "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ] && [ -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ]; then
       rm -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}"
     fi
 
-    if [[ "${DBUS_SETTINGS_STAGING_CREATED}" == true ]]; then
+    if [ "${DBUS_SETTINGS_STAGING_CREATED}" = true ]; then
       rm -f "${__dplus_cleanup_staging_file}"
     fi
   fi
@@ -1114,11 +1128,11 @@ register_dbus_settings() {
 
   build_dbus_settings_entries "${__dplus_register_list_path}"
 
-  if (( _dbus_settings_entry_count == 0 )); then
+  if [ "${_dbus_settings_entry_count}" -eq 0 ]; then
     die "Es konnten keine D-Bus-Definitionen für die Registrierung generiert werden"
   fi
 
-  if [[ -f "${__dplus_register_staging_file}" ]]; then
+  if [ -f "${__dplus_register_staging_file}" ]; then
     DBUS_SETTINGS_STAGING_BACKUP="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.backup.XXXXXX")"
     cp -f "${__dplus_register_staging_file}" "${DBUS_SETTINGS_STAGING_BACKUP}"
   fi
@@ -1127,14 +1141,14 @@ register_dbus_settings() {
   DBUS_SETTINGS_STAGING_CREATED=true
 
   mkdir -p "${INSTALL_ROOT}"
-  if [[ -f "${__dplus_register_persistent_file}" ]]; then
+  if [ -f "${__dplus_register_persistent_file}" ]; then
     DBUS_SETTINGS_PERSISTENT_BACKUP="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.persist.backup.XXXXXX")"
     cp -f "${__dplus_register_persistent_file}" "${DBUS_SETTINGS_PERSISTENT_BACKUP}"
   fi
   install -m 644 "${__dplus_register_staging_file}" "${__dplus_register_persistent_file}"
   DBUS_SETTINGS_PERSISTENT_UPDATED=true
 
-  if command -v -- endScript >/dev/null 2>&1 && [[ -z "${__DPLUS_HELPER_FALLBACK_DEFINED:-}" ]]; then
+  if command -v -- endScript >/dev/null 2>&1 && [ -z "${__DPLUS_HELPER_FALLBACK_DEFINED:-}" ]; then
     dbusSettingsUpdated=true
     return
   fi
@@ -1143,26 +1157,26 @@ register_dbus_settings() {
     __dplus_register_success=true
   elif call_helper_function_if_available addAllDbusSettings "${__dplus_register_staging_file}"; then
     __dplus_register_success=true
-  elif [[ -n "${_dbus_settings_multiline}" ]] && call_helper_function_if_available addAllDbusSettings "${_dbus_settings_multiline}"; then
+  elif [ -n "${_dbus_settings_multiline}" ] && call_helper_function_if_available addAllDbusSettings "${_dbus_settings_multiline}"; then
     __dplus_register_success=true
   fi
 
-  if [[ "${__dplus_register_success}" == true ]]; then
+  if [ "${__dplus_register_success}" = true ]; then
     dbusSettingsUpdated=true
     return
   fi
 
-  if [[ -n "${DBUS_SETTINGS_STAGING_BACKUP}" ]]; then
+  if [ -n "${DBUS_SETTINGS_STAGING_BACKUP}" ]; then
     mv -f "${DBUS_SETTINGS_STAGING_BACKUP}" "${__dplus_register_staging_file}"
     DBUS_SETTINGS_STAGING_BACKUP=""
-  elif [[ "${DBUS_SETTINGS_STAGING_CREATED}" == true ]]; then
+  elif [ "${DBUS_SETTINGS_STAGING_CREATED}" = true ]; then
     rm -f "${__dplus_register_staging_file}"
   fi
 
-  if [[ -n "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ]]; then
+  if [ -n "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ]; then
     mv -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" "${__dplus_register_persistent_file}"
     DBUS_SETTINGS_PERSISTENT_BACKUP=""
-  elif [[ "${DBUS_SETTINGS_PERSISTENT_UPDATED}" == true ]]; then
+  elif [ "${DBUS_SETTINGS_PERSISTENT_UPDATED}" = true ]; then
     rm -f "${__dplus_register_persistent_file}"
   fi
 
@@ -1185,59 +1199,59 @@ unregister_dbus_settings() {
 
   build_dbus_settings_entries "${__dplus_unregister_list_path}"
 
-  if [[ -f "${__dplus_unregister_staging_file}" ]]; then
+  if [ -f "${__dplus_unregister_staging_file}" ]; then
     DBUS_SETTINGS_STAGING_BACKUP="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.backup.XXXXXX")"
     cp -f "${__dplus_unregister_staging_file}" "${DBUS_SETTINGS_STAGING_BACKUP}"
   fi
 
-  if (( _dbus_settings_entry_count > 0 )); then
+  if [ "${_dbus_settings_entry_count}" -gt 0 ]; then
     write_dbus_settings_file "${__dplus_unregister_staging_file}"
     DBUS_SETTINGS_STAGING_CREATED=true
   fi
 
-  if [[ -f "${__dplus_unregister_staging_file}" ]]; then
+  if [ -f "${__dplus_unregister_staging_file}" ]; then
     __dplus_unregister_payload="${__dplus_unregister_staging_file}"
-  elif [[ -f "${__dplus_unregister_persistent_file}" ]]; then
+  elif [ -f "${__dplus_unregister_persistent_file}" ]; then
     __dplus_unregister_payload="${__dplus_unregister_persistent_file}"
   fi
 
   if call_helper_function_if_available removeAllDbusSettings; then
     __dplus_unregister_success=true
-  elif [[ -n "${__dplus_unregister_payload}" ]] && call_helper_function_if_available removeAllDbusSettings "${__dplus_unregister_payload}"; then
+  elif [ -n "${__dplus_unregister_payload}" ] && call_helper_function_if_available removeAllDbusSettings "${__dplus_unregister_payload}"; then
     __dplus_unregister_success=true
-  elif [[ -n "${_dbus_settings_multiline}" ]] && call_helper_function_if_available removeAllDbusSettings "${_dbus_settings_multiline}"; then
+  elif [ -n "${_dbus_settings_multiline}" ] && call_helper_function_if_available removeAllDbusSettings "${_dbus_settings_multiline}"; then
     __dplus_unregister_success=true
   elif call_helper_function_if_available removeDbusSettings; then
     __dplus_unregister_success=true
-  elif [[ -n "${__dplus_unregister_payload}" ]] && call_helper_function_if_available removeDbusSettings "${__dplus_unregister_payload}"; then
+  elif [ -n "${__dplus_unregister_payload}" ] && call_helper_function_if_available removeDbusSettings "${__dplus_unregister_payload}"; then
     __dplus_unregister_success=true
-  elif [[ -n "${_dbus_settings_multiline}" ]] && call_helper_function_if_available removeDbusSettings "${_dbus_settings_multiline}"; then
+  elif [ -n "${_dbus_settings_multiline}" ] && call_helper_function_if_available removeDbusSettings "${_dbus_settings_multiline}"; then
     __dplus_unregister_success=true
-  elif [[ -z "${__dplus_unregister_payload}" && -z "${_dbus_settings_multiline}" ]]; then
+  elif [ -z "${__dplus_unregister_payload}" ] && [ -z "${_dbus_settings_multiline}" ]; then
     __dplus_unregister_success=true
   fi
 
-  if [[ "${__dplus_unregister_success}" == true ]]; then
-    if [[ -n "${DBUS_SETTINGS_STAGING_BACKUP}" ]]; then
+  if [ "${__dplus_unregister_success}" = true ]; then
+    if [ -n "${DBUS_SETTINGS_STAGING_BACKUP}" ]; then
       rm -f "${DBUS_SETTINGS_STAGING_BACKUP}" "${__dplus_unregister_staging_file}" 2>/dev/null || true
       DBUS_SETTINGS_STAGING_BACKUP=""
     fi
 
-    if [[ -n "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ]]; then
+    if [ -n "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ]; then
       rm -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" "${__dplus_unregister_persistent_file}" 2>/dev/null || true
       DBUS_SETTINGS_PERSISTENT_BACKUP=""
     fi
 
-    if [[ -n "${__dplus_unregister_payload}" || -n "${_dbus_settings_multiline}" ]]; then
+    if [ -n "${__dplus_unregister_payload}" ] || [ -n "${_dbus_settings_multiline}" ]; then
       dbusSettingsUpdated=true
     fi
     return
   fi
 
-  if [[ -n "${DBUS_SETTINGS_STAGING_BACKUP}" ]]; then
+  if [ -n "${DBUS_SETTINGS_STAGING_BACKUP}" ]; then
     mv -f "${DBUS_SETTINGS_STAGING_BACKUP}" "${__dplus_unregister_staging_file}"
     DBUS_SETTINGS_STAGING_BACKUP=""
-  elif [[ "${DBUS_SETTINGS_STAGING_CREATED}" == true ]]; then
+  elif [ "${DBUS_SETTINGS_STAGING_CREATED}" = true ]; then
     rm -f "${__dplus_unregister_staging_file}"
   fi
 
@@ -1271,7 +1285,7 @@ register_package_dependencies() {
   LAST_PACKAGE_DEPENDENCY_CHECK_FAIL_MESSAGE=""
   LAST_PACKAGE_DEPENDENCY_CHECK_CONFLICT=false
 
-  if [[ -z "${__dplus_register_pkg_resolved_action}" ]]; then
+  if [ -z "${__dplus_register_pkg_resolved_action}" ]; then
     case "${RESOLVED_CLI_ACTION:-}" in
       install|INSTALL)
         __dplus_register_pkg_resolved_action="INSTALL"
@@ -1286,12 +1300,12 @@ register_package_dependencies() {
   fi
 
   __dplus_register_pkg_normalized_action=""
-  if [[ -n "${__dplus_register_pkg_resolved_action}" ]]; then
+  if [ -n "${__dplus_register_pkg_resolved_action}" ]; then
     __dplus_register_pkg_normalized_action="${__dplus_register_pkg_resolved_action^^}"
   fi
 
-  if [[ "${__dplus_register_pkg_normalized_action}" != "INSTALL" ]]; then
-    if [[ -n "${__dplus_register_pkg_normalized_action}" ]]; then
+  if [ "${__dplus_register_pkg_normalized_action}" != "INSTALL" ]; then
+    if [ -n "${__dplus_register_pkg_normalized_action}" ]; then
       log INFO "Überspringe packageDependencies-Prüfung (Aktion ${__dplus_register_pkg_normalized_action})"
     else
       log INFO "Überspringe packageDependencies-Prüfung (keine Installationsaktion erkannt)"
@@ -1299,7 +1313,7 @@ register_package_dependencies() {
     return
   fi
 
-  if [[ ! -f "${PACKAGE_DEPENDENCIES_FILE}" ]]; then
+  if [ ! -f "${PACKAGE_DEPENDENCIES_FILE}" ]; then
     log WARN "packageDependencies-Datei fehlt, überspringe Registrierung"
     return
   fi
@@ -1315,7 +1329,7 @@ register_package_dependencies() {
   __dplus_register_pkg_helper_install_failed="${installFailed:-}"
   __dplus_register_pkg_helper_install_fail_message="${installFailMessage:-}"
   __dplus_register_pkg_normalized_action_after=""
-  if [[ -n "${__dplus_register_pkg_helper_action_after}" ]]; then
+  if [ -n "${__dplus_register_pkg_helper_action_after}" ]; then
     __dplus_register_pkg_normalized_action_after="${__dplus_register_pkg_helper_action_after^^}"
   fi
 
@@ -1327,7 +1341,7 @@ register_package_dependencies() {
       ;;
   esac
 
-  if [[ -n "${__dplus_register_pkg_normalized_action_after}" && "${__dplus_register_pkg_normalized_action_after}" != "INSTALL" ]]; then
+  if [ -n "${__dplus_register_pkg_normalized_action_after}" ] && [ "${__dplus_register_pkg_normalized_action_after}" != "INSTALL" ]; then
     __dplus_register_pkg_conflict_detected=true
   fi
 
@@ -1337,17 +1351,17 @@ register_package_dependencies() {
   LAST_PACKAGE_DEPENDENCY_CHECK_FAIL_MESSAGE="${__dplus_register_pkg_helper_install_fail_message}"
   LAST_PACKAGE_DEPENDENCY_CHECK_CONFLICT="${__dplus_register_pkg_conflict_detected}"
 
-  if ((__dplus_register_pkg_status == 0)); then
-    if [[ "${__dplus_register_pkg_conflict_detected}" == true ]]; then
+  if [ "${__dplus_register_pkg_status}" -eq 0 ]; then
+    if [ "${__dplus_register_pkg_conflict_detected}" = true ]; then
       __dplus_register_pkg_conflict_message="${__dplus_register_pkg_helper_install_fail_message}"
-      if [[ -z "${__dplus_register_pkg_conflict_message}" ]]; then
-        if [[ -n "${__dplus_register_pkg_normalized_action_after}" && "${__dplus_register_pkg_normalized_action_after}" != "INSTALL" ]]; then
+      if [ -z "${__dplus_register_pkg_conflict_message}" ]; then
+        if [ -n "${__dplus_register_pkg_normalized_action_after}" ] && [ "${__dplus_register_pkg_normalized_action_after}" != "INSTALL" ]; then
           __dplus_register_pkg_conflict_message="SetupHelper hat die Aktion ${__dplus_register_pkg_normalized_action_after} angefordert; Installation wird abgebrochen."
         else
           __dplus_register_pkg_conflict_message="SetupHelper meldete Paketkonflikte; die Installation wird abgebrochen."
         fi
       else
-        if [[ -n "${__dplus_register_pkg_normalized_action_after}" && "${__dplus_register_pkg_normalized_action_after}" != "INSTALL" ]]; then
+        if [ -n "${__dplus_register_pkg_normalized_action_after}" ] && [ "${__dplus_register_pkg_normalized_action_after}" != "INSTALL" ]; then
           __dplus_register_pkg_conflict_message="${__dplus_register_pkg_conflict_message} (scriptAction=${__dplus_register_pkg_normalized_action_after})"
         fi
       fi
@@ -1357,7 +1371,7 @@ register_package_dependencies() {
     return
   fi
 
-  if ((__dplus_register_pkg_status == 127)); then
+  if [ "${__dplus_register_pkg_status}" -eq 127 ]; then
     log INFO "SetupHelper stellt keine Funktion checkPackageDependencies bereit; überspringe packageDependencies-Prüfung"
     return
   fi
@@ -1379,7 +1393,7 @@ install_payload() {
   install -m 644 "${PROJECT_ROOT}/gitHubInfo" "${INSTALL_ROOT}/gitHubInfo"
   install -m 644 "${PROJECT_ROOT}/settingsList" "${INSTALL_ROOT}/settingsList"
 
-  if [[ -d "${PROJECT_ROOT}/FileSets" ]]; then
+  if [ -d "${PROJECT_ROOT}/FileSets" ]; then
     copy_tree "${PROJECT_ROOT}/FileSets" "${INSTALL_ROOT}/FileSets"
   fi
 }
@@ -1432,7 +1446,7 @@ perform_uninstall() {
 
   process_file_sets_for_action UNINSTALL
 
-  if [[ -d "${INSTALL_ROOT}" ]]; then
+  if [ -d "${INSTALL_ROOT}" ]; then
     log INFO "Entferne Installationsverzeichnis ${INSTALL_ROOT}"
     rm -rf "${INSTALL_ROOT}"
     filesUpdated=true
@@ -1460,12 +1474,12 @@ perform_status() {
     __dplus_status_reported=true
   fi
 
-  if [[ "${__dplus_status_reported}" == false ]] && command -v -- helper_print_service_status >/dev/null 2>&1; then
+  if [ "${__dplus_status_reported}" = false ] && command -v -- helper_print_service_status >/dev/null 2>&1; then
     helper_print_service_status "${SERVICE_NAME}"
     __dplus_status_reported=true
   fi
 
-  if [[ "${__dplus_status_reported}" == false ]]; then
+  if [ "${__dplus_status_reported}" = false ]; then
     log WARN "Keine Statusfunktion für Dienst ${SERVICE_NAME} verfügbar"
   fi
 
@@ -1482,7 +1496,7 @@ main() {
   __dplus_main_cli_action="${1:-}"
   __dplus_main_normalized_cli=""
 
-  if [[ -n "${__dplus_main_cli_action}" ]]; then
+  if [ -n "${__dplus_main_cli_action}" ]; then
     case "${__dplus_main_cli_action}" in
       install|uninstall|status)
         __dplus_main_normalized_cli="${__dplus_main_cli_action}"
@@ -1499,7 +1513,7 @@ main() {
   fi
 
   __dplus_main_helper_action="${scriptAction:-}"
-  if [[ -z "${__dplus_main_helper_action}" ]]; then
+  if [ -z "${__dplus_main_helper_action}" ]; then
     case "${__dplus_main_normalized_cli:-install}" in
       install)
         __dplus_main_helper_action="INSTALL"
@@ -1520,12 +1534,12 @@ main() {
       status) __dplus_main_expected_from_cli="CHECK" ;;
     esac
 
-    if [[ -n "${__dplus_main_expected_from_cli}" && "${__dplus_main_helper_action}" != "${__dplus_main_expected_from_cli}" ]]; then
+    if [ -n "${__dplus_main_expected_from_cli}" ] && [ "${__dplus_main_helper_action}" != "${__dplus_main_expected_from_cli}" ]; then
       log WARN "scriptAction ${__dplus_main_helper_action} stimmt nicht mit der CLI-Aktion ${__dplus_main_normalized_cli} überein; verwende CLI-Aktion"
       __dplus_main_helper_action="${__dplus_main_expected_from_cli}"
     fi
 
-    if [[ -z "${__dplus_main_normalized_cli}" ]]; then
+    if [ -z "${__dplus_main_normalized_cli}" ]; then
       case "${__dplus_main_helper_action}" in
         INSTALL) __dplus_main_normalized_cli="install" ;;
         UNINSTALL) __dplus_main_normalized_cli="uninstall" ;;
@@ -1541,7 +1555,7 @@ main() {
 
   scriptAction="${__dplus_main_helper_action}"
 
-  if [[ -n "${__dplus_main_normalized_cli}" ]]; then
+  if [ -n "${__dplus_main_normalized_cli}" ]; then
     RESOLVED_CLI_ACTION="${__dplus_main_normalized_cli}"
   else
     case "${scriptAction}" in
@@ -1580,6 +1594,6 @@ main() {
   esac
 }
 
-if [[ -z "${DPLUS_SIMULATOR_SKIP_MAIN:-}" ]]; then
+if [ -z "${DPLUS_SIMULATOR_SKIP_MAIN:-}" ]; then
   main "$@"
 fi
