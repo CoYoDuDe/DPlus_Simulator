@@ -49,7 +49,8 @@ RESOLVED_CLI_ACTION=""
 filesUpdated=false
 servicesUpdated=false
 dbusSettingsUpdated=false
-declare -a _dbus_settings_entries=()
+_dbus_settings_entries_payload=""
+_dbus_settings_entry_count=0
 _dbus_settings_multiline=""
 DBUS_SETTINGS_FILENAME="DbusSettingsList"
 DBUS_SETTINGS_STAGING_FILE="${PROJECT_ROOT}/${DBUS_SETTINGS_FILENAME}"
@@ -1019,23 +1020,28 @@ build_dbus_settings_entries() {
   if [[ ! -f "${list_path}" ]]; then
     die "settingsList ${list_path} nicht gefunden"
   fi
-  mapfile -t _dbus_settings_entries < "${list_path}"
 
-  local sanitized_entries=()
-  local entry=""
-  for entry in "${_dbus_settings_entries[@]}"; do
+  local buffer=""
+  local count=0
+  local line=""
+
+  while IFS= read -r line || [[ -n "${line}" ]]; do
     local trimmed=""
-    trimmed="$(trim_whitespace "${entry}")"
+    trimmed="$(trim_whitespace "${line}")"
     if [[ -n "${trimmed}" ]]; then
-      sanitized_entries+=("${trimmed}")
+      buffer+="${trimmed}"$'\n'
+      count=$((count + 1))
     fi
-  done
+  done < "${list_path}"
 
-  _dbus_settings_entries=("${sanitized_entries[@]}")
-
-  if (( ${#_dbus_settings_entries[@]} > 0 )); then
-    _dbus_settings_multiline="$(printf '%s\n' "${_dbus_settings_entries[@]}")"
+  if (( count > 0 )); then
+    buffer="${buffer%$'\n'}"
+    _dbus_settings_entries_payload="${buffer}"
+    _dbus_settings_entry_count=${count}
+    _dbus_settings_multiline="${buffer}"
   else
+    _dbus_settings_entries_payload=""
+    _dbus_settings_entry_count=0
     _dbus_settings_multiline=""
   fi
 }
@@ -1043,8 +1049,19 @@ build_dbus_settings_entries() {
 write_dbus_settings_file() {
   local output_path="$1"
 
-  if (( ${#_dbus_settings_entries[@]} > 0 )); then
-    printf '%s\n' "${_dbus_settings_entries[@]}" > "${output_path}"
+  if (( _dbus_settings_entry_count > 0 )); then
+    (
+      local line=""
+      set --
+      while IFS= read -r line || [[ -n "${line}" ]]; do
+        set -- "$@" "${line}"
+      done < <(printf '%s\n' "${_dbus_settings_entries_payload}")
+
+      while (( "$#" > 0 )); do
+        printf '%s\n' "$1"
+        shift
+      done
+    ) > "${output_path}"
   else
     : > "${output_path}"
   fi
@@ -1108,7 +1125,7 @@ register_dbus_settings() {
 
   build_dbus_settings_entries "${list_path}"
 
-  if (( ${#_dbus_settings_entries[@]} == 0 )); then
+  if (( _dbus_settings_entry_count == 0 )); then
     die "Es konnten keine D-Bus-Definitionen für die Registrierung generiert werden"
   fi
 
@@ -1184,7 +1201,7 @@ unregister_dbus_settings() {
     cp -f "${staging_file}" "${DBUS_SETTINGS_STAGING_BACKUP}"
   fi
 
-  if (( ${#_dbus_settings_entries[@]} > 0 )); then
+  if (( _dbus_settings_entry_count > 0 )); then
     write_dbus_settings_file "${staging_file}"
     DBUS_SETTINGS_STAGING_CREATED=true
   fi
