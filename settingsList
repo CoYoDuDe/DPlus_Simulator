@@ -18,3 +18,4 @@
 {"path": "/Settings/Devices/DPlusSim/DbusBus", "type": "s", "default": "system", "min": 0, "max": 0, "description": "Zu verwendender D-Bus (system oder session)."}
 {"path": "/Settings/Devices/DPlusSim/ServicePath", "type": "s", "default": "com.victronenergy.system", "min": 0, "max": 0, "description": "Automatisch erkannter D-Bus-Dienst für die Starterspannung (schreibgeschützt; manuelle Änderungen werden überschrieben)."}
 {"path": "/Settings/Devices/DPlusSim/VoltagePath", "type": "s", "default": "/StarterVoltage", "min": 0, "max": 0, "description": "Schreibgeschützter Starterspannungs-Pfad (/StarterVoltage) des automatisch erkannten Dienstes."}
+{"path": "/Settings/Devices/DPlusSim/RelayFunctionBackups", "type": "s", "default": "{}", "min": 0, "max": 0, "description": "JSON-Objekt mit den gesicherten Relay-Funktionen je Kanal."}
