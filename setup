@@ -10,6 +10,8 @@ if [ -z "${BASH_VERSION:-}" ]; then
   exit 1
 fi
 
+set -o pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${SCRIPT_DIR}"
 INSTALL_ROOT="${INSTALL_ROOT:-/opt/dplus_sim}"
