@@ -38,36 +38,44 @@ def test_unregister_dbus_settings_uses_remove_all(tmp_path: Path) -> None:
         dbus_list_file.unlink()
 
     script = f"""
-set -euo pipefail
+set -eu
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
+export BASH_VERSION="${{BASH_VERSION:-5}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
-export INSTALL_ROOT=\"{install_root}\"
-source \"{setup_script}\"
+export INSTALL_ROOT="{install_root}"
+export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
+export DPLUS_TEST_LOG_FILE="{log_file}"
+export DPLUS_TEST_DBUS_LIST_FILE="{dbus_list_file}"
+export DPLUS_TEST_PAYLOAD_FILE="{payload_file}"
+"$SETUP_SHELL" -c 'set -eu
+. "$DPLUS_TEST_SETUP_SCRIPT"
 removeDbusSettings() {{
-  printf 'remove|%s|%s\\n' "$#" "$*" >> \"{log_file}\"
+  printf "remove|%s|%s\n" "$#" "$*" >> "$DPLUS_TEST_LOG_FILE"
   return 1
 }}
 removeAllDbusSettings() {{
-  local argc="$#"
-  local args="$*"
-  local state="missing"
-  if [[ -f \"{dbus_list_file}\" ]]; then
+  argc="$#"
+  args="$*"
+  state="missing"
+  if [ -f "$DPLUS_TEST_DBUS_LIST_FILE" ]; then
     state="present"
-    cp \"{dbus_list_file}\" \"{payload_file}\"
+    cp "$DPLUS_TEST_DBUS_LIST_FILE" "$DPLUS_TEST_PAYLOAD_FILE"
   fi
-  printf 'remove_all|%s|%s|%s\\n' "${{argc}}" "${{args}}" "${{state}}" >> \"{log_file}\"
+  printf "remove_all|%s|%s|%s\n" "$argc" "$args" "$state" >> "$DPLUS_TEST_LOG_FILE"
   return 0
 }}
 endScript() {{
-  printf 'endScript-begin:%s\\n' \"$*\" >> \"{log_file}\"
-  printf 'endScript-end:%s\\n' \"$*\" >> \"{log_file}\"
+  printf "endScript-begin:%s\n" "$*" >> "$DPLUS_TEST_LOG_FILE"
+  printf "endScript-end:%s\n" "$*" >> "$DPLUS_TEST_LOG_FILE"
   return 0
 }}
 unregister_dbus_settings
-printf 'marker-before-finalize\\n' >> \"{log_file}\"
+printf "marker-before-finalize\n" >> "$DPLUS_TEST_LOG_FILE"
 finalize_helper_session
+'
 """
     try:
-        subprocess.run(["bash", "-c", script], check=True, cwd=repo_root)
+        subprocess.run(["sh", "-c", script], check=True, cwd=repo_root)
         file_exists_after = dbus_list_file.exists()
         log_lines = log_file.read_text(encoding="utf-8").splitlines()
 
@@ -120,45 +128,53 @@ def test_perform_uninstall_reports_end_script_flags(tmp_path: Path) -> None:
     payload_file = tmp_path / "uninstall_payload.json"
 
     script = f"""
-set -euo pipefail
+set -eu
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
+export BASH_VERSION="${{BASH_VERSION:-5}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
-export INSTALL_ROOT=\"{install_root}\"
-source \"{setup_script}\"
+export INSTALL_ROOT="{install_root}"
+export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
+export DPLUS_TEST_LOG_FILE="{log_file}"
+export DPLUS_TEST_PAYLOAD_FILE="{payload_file}"
+export DPLUS_TEST_REPO_ROOT="{repo_root}"
+"$SETUP_SHELL" -c 'set -eu
+. "$DPLUS_TEST_SETUP_SCRIPT"
 source_helper_resources
 unset __DPLUS_HELPER_FALLBACK_DEFINED
 
 remove_service() {{
-  printf 'remove_service\\n' >> \"{log_file}\"
+  printf "remove_service\n" >> "$DPLUS_TEST_LOG_FILE"
   return 0
 }}
 
 removeDbusSettings() {{
-  printf 'remove|%s|%s\\n' "$#" "$*" >> \"{log_file}\"
+  printf "remove|%s|%s\n" "$#" "$*" >> "$DPLUS_TEST_LOG_FILE"
   return 1
 }}
 
 removeAllDbusSettings() {{
-  local argc="$#"
-  local args="$*"
-  local state="missing"
-  if [[ -f \"{repo_root}/DbusSettingsList\" ]]; then
+  argc="$#"
+  args="$*"
+  state="missing"
+  if [ -f "$DPLUS_TEST_REPO_ROOT/DbusSettingsList" ]; then
     state="present"
-    cp \"{repo_root}/DbusSettingsList\" \"{payload_file}\"
+    cp "$DPLUS_TEST_REPO_ROOT/DbusSettingsList" "$DPLUS_TEST_PAYLOAD_FILE"
   fi
-  printf 'remove_all|%s|%s|%s\\n' "${{argc}}" "${{args}}" "${{state}}" >> \"{log_file}\"
+  printf "remove_all|%s|%s|%s\n" "$argc" "$args" "$state" >> "$DPLUS_TEST_LOG_FILE"
   return 0
 }}
 
 endScript() {{
-  printf 'endScript-begin:%s\\n' \"$*\" >> \"{log_file}\"
-  printf 'endScript-end:%s\\n' \"$*\" >> \"{log_file}\"
+  printf "endScript-begin:%s\n" "$*" >> "$DPLUS_TEST_LOG_FILE"
+  printf "endScript-end:%s\n" "$*" >> "$DPLUS_TEST_LOG_FILE"
   return 0
 }}
 
 perform_uninstall
+'
 """
 
-    subprocess.run(["bash", "-c", script], check=True, cwd=repo_root)
+    subprocess.run(["sh", "-c", script], check=True, cwd=repo_root)
     _cleanup_helper_state(repo_root)
 
     assert not install_root.exists(), "Installationsverzeichnis wurde nicht entfernt."
@@ -215,24 +231,30 @@ def test_unregister_dbus_settings_fails_when_helper_removal_fails(tmp_path: Path
     preexisting_content = dbus_list_file.read_bytes() if dbus_list_file.exists() else None
 
     script = f"""
-set -euo pipefail
+set -eu
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
+export BASH_VERSION="${{BASH_VERSION:-5}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
-export INSTALL_ROOT=\"{install_root}\"
-source \"{setup_script}\"
+export INSTALL_ROOT="{install_root}"
+export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
+export DPLUS_TEST_LOG_FILE="{log_file}"
+"$SETUP_SHELL" -c 'set -eu
+. "$DPLUS_TEST_SETUP_SCRIPT"
 removeDbusSettings() {{
-  printf 'remove|%s|%s\\n' "$#" "$*" >> \"{log_file}\"
+  printf "remove|%s|%s\n" "$#" "$*" >> "$DPLUS_TEST_LOG_FILE"
   return 1
 }}
 removeAllDbusSettings() {{
-  printf 'remove_all|%s|%s\\n' "$#" "$*" >> \"{log_file}\"
+  printf "remove_all|%s|%s\n" "$#" "$*" >> "$DPLUS_TEST_LOG_FILE"
   return 1
 }}
 unregister_dbus_settings
+'
 """
 
     try:
         result = subprocess.run(
-            ["bash", "-c", script],
+            ["sh", "-c", script],
             cwd=repo_root,
             capture_output=True,
             text=True,

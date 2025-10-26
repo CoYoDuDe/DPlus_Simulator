@@ -32,21 +32,27 @@ def test_update_file_sets_install(tmp_path: Path) -> None:
     (module_root / "dbus_next" / "__init__.py").write_text("# stub\n", encoding="utf-8")
 
     script = f"""
-set -euo pipefail
+set -eu
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
+export BASH_VERSION="${{BASH_VERSION:-5}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export INSTALL_ROOT="{install_root}"
 export DPLUS_SIMULATOR_FILESETS_TARGET_ROOT="{target_root}"
-PYTHONPATH="{module_root}:{{PYTHONPATH:-}}"
+PYTHONPATH="{module_root}:${{PYTHONPATH:-}}"
 export PYTHONPATH
-source "{setup_script}"
-SETUP_HELPER_DETECTED_ROOT="{helper_root}"
+export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
+export DPLUS_TEST_HELPER_ROOT="{helper_root}"
+"$SETUP_SHELL" -c 'set -eu
+. "$DPLUS_TEST_SETUP_SCRIPT"
+SETUP_HELPER_DETECTED_ROOT="$DPLUS_TEST_HELPER_ROOT"
 source_helper_resources
-SETUP_HELPER_DETECTED_ROOT="{helper_root}"
+SETUP_HELPER_DETECTED_ROOT="$DPLUS_TEST_HELPER_ROOT"
 scriptAction=INSTALL
 perform_install
+'
 """
 
-    subprocess.run(["bash", "-c", script], check=True, cwd=repo_root)
+    subprocess.run(["sh", "-c", script], check=True, cwd=repo_root)
 
     version_independent_dir = repo_root / "FileSets" / "VersionIndependent"
 
@@ -110,31 +116,36 @@ def test_install_without_preinstalled_dbus_next(tmp_path: Path) -> None:
     assert not (module_root / "dbus_next").exists(), "dbus_next darf vor der Installation nicht existieren."
 
     script = f"""
-set -euo pipefail
+set -eu
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
+export BASH_VERSION="${{BASH_VERSION:-5}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export INSTALL_ROOT="{install_root}"
 export DPLUS_SIMULATOR_FILESETS_TARGET_ROOT="{target_root}"
 unset PYTHONPATH
-source "{setup_script}"
-SETUP_HELPER_DETECTED_ROOT="{helper_root}"
+export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
+export DPLUS_TEST_HELPER_ROOT="{helper_root}"
+export DPLUS_TEST_MODULE_ROOT="{module_root}"
+"$SETUP_SHELL" -c 'set -eu
+. "$DPLUS_TEST_SETUP_SCRIPT"
+SETUP_HELPER_DETECTED_ROOT="$DPLUS_TEST_HELPER_ROOT"
 source_helper_resources
-SETUP_HELPER_DETECTED_ROOT="{helper_root}"
+SETUP_HELPER_DETECTED_ROOT="$DPLUS_TEST_HELPER_ROOT"
 scriptAction=INSTALL
 
 checkPackageDependencies() {{
-  mkdir -p "{module_root}/dbus_next"
-  cat <<'PY' > "{module_root}/dbus_next/__init__.py"
-# stub
-PY
-  PYTHONPATH="{module_root}"
+  mkdir -p "$DPLUS_TEST_MODULE_ROOT/dbus_next"
+  printf "# stub\n" > "$DPLUS_TEST_MODULE_ROOT/dbus_next/__init__.py"
+  PYTHONPATH="$DPLUS_TEST_MODULE_ROOT"
   export PYTHONPATH
   return 0
 }}
 
 perform_install
+'
 """
 
-    subprocess.run(["bash", "-c", script], check=True, cwd=repo_root)
+    subprocess.run(["sh", "-c", script], check=True, cwd=repo_root)
 
     assert (module_root / "dbus_next" / "__init__.py").is_file(), "dbus_next wurde nicht installiert."
 
@@ -155,38 +166,50 @@ def test_update_file_sets_uninstall(tmp_path: Path) -> None:
     (module_root / "dbus_next" / "__init__.py").write_text("# stub\n", encoding="utf-8")
 
     install_script = f"""
-set -euo pipefail
+set -eu
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
+export BASH_VERSION="${{BASH_VERSION:-5}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export INSTALL_ROOT="{install_root}"
 export DPLUS_SIMULATOR_FILESETS_TARGET_ROOT="{target_root}"
-PYTHONPATH="{module_root}:{{PYTHONPATH:-}}"
+PYTHONPATH="{module_root}:${{PYTHONPATH:-}}"
 export PYTHONPATH
-source "{setup_script}"
-SETUP_HELPER_DETECTED_ROOT="{helper_root}"
+export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
+export DPLUS_TEST_HELPER_ROOT="{helper_root}"
+"$SETUP_SHELL" -c 'set -eu
+. "$DPLUS_TEST_SETUP_SCRIPT"
+SETUP_HELPER_DETECTED_ROOT="$DPLUS_TEST_HELPER_ROOT"
 source_helper_resources
-SETUP_HELPER_DETECTED_ROOT="{helper_root}"
+SETUP_HELPER_DETECTED_ROOT="$DPLUS_TEST_HELPER_ROOT"
 scriptAction=INSTALL
 perform_install
+'
 """
 
-    subprocess.run(["bash", "-c", install_script], check=True, cwd=repo_root)
+    subprocess.run(["sh", "-c", install_script], check=True, cwd=repo_root)
 
     uninstall_script = f"""
-set -euo pipefail
+set -eu
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
+export BASH_VERSION="${{BASH_VERSION:-5}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export INSTALL_ROOT="{install_root}"
 export DPLUS_SIMULATOR_FILESETS_TARGET_ROOT="{target_root}"
-PYTHONPATH="{module_root}:{{PYTHONPATH:-}}"
+PYTHONPATH="{module_root}:${{PYTHONPATH:-}}"
 export PYTHONPATH
-source "{setup_script}"
-SETUP_HELPER_DETECTED_ROOT="{helper_root}"
+export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
+export DPLUS_TEST_HELPER_ROOT="{helper_root}"
+"$SETUP_SHELL" -c 'set -eu
+. "$DPLUS_TEST_SETUP_SCRIPT"
+SETUP_HELPER_DETECTED_ROOT="$DPLUS_TEST_HELPER_ROOT"
 source_helper_resources
-SETUP_HELPER_DETECTED_ROOT="{helper_root}"
+SETUP_HELPER_DETECTED_ROOT="$DPLUS_TEST_HELPER_ROOT"
 scriptAction=UNINSTALL
 perform_uninstall
+'
 """
 
-    subprocess.run(["bash", "-c", uninstall_script], check=True, cwd=repo_root)
+    subprocess.run(["sh", "-c", uninstall_script], check=True, cwd=repo_root)
 
     restored_dest = (
         target_root
