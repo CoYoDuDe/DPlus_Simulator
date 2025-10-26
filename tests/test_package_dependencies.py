@@ -28,8 +28,7 @@ def test_register_package_dependencies_uses_check(tmp_path: Path) -> None:
 
     script = f"""
 set -eu
-SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
-export BASH_VERSION="${{BASH_VERSION:-5}}"
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-sh}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export DPLUS_TEST_DEPENDENCIES_FILE="{dependencies_file}"
 export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
@@ -64,8 +63,7 @@ def test_register_package_dependencies_skips_without_helper(tmp_path: Path) -> N
 
     script = f"""
 set -eu
-SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
-export BASH_VERSION="${{BASH_VERSION:-5}}"
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-sh}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export DPLUS_TEST_DEPENDENCIES_FILE="{dependencies_file}"
 export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
@@ -104,8 +102,7 @@ def test_register_package_dependencies_skips_for_uninstall(tmp_path: Path) -> No
 
     script = f"""
 set -eu
-SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
-export BASH_VERSION="${{BASH_VERSION:-5}}"
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-sh}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export DPLUS_TEST_DEPENDENCIES_FILE="{dependencies_file}"
 export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
@@ -140,8 +137,7 @@ def test_register_package_dependencies_skips_for_status(tmp_path: Path) -> None:
 
     script = f"""
 set -eu
-SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
-export BASH_VERSION="${{BASH_VERSION:-5}}"
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-sh}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export DPLUS_TEST_DEPENDENCIES_FILE="{dependencies_file}"
 export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
@@ -176,8 +172,7 @@ def test_register_package_dependencies_fails_on_conflict(tmp_path: Path) -> None
 
     script = f"""
 set -eu
-SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
-export BASH_VERSION="${{BASH_VERSION:-5}}"
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-sh}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export DPLUS_TEST_DEPENDENCIES_FILE="{dependencies_file}"
 export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
@@ -221,8 +216,7 @@ def test_register_package_dependencies_aborts_on_helper_abort(tmp_path: Path) ->
 
     script = f"""
 set -eu
-SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
-export BASH_VERSION="${{BASH_VERSION:-5}}"
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-sh}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export DPLUS_TEST_DEPENDENCIES_FILE="{dependencies_file}"
 export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"

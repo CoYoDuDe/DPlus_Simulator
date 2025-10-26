@@ -33,8 +33,7 @@ def test_update_file_sets_install(tmp_path: Path) -> None:
 
     script = f"""
 set -eu
-SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
-export BASH_VERSION="${{BASH_VERSION:-5}}"
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-sh}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export INSTALL_ROOT="{install_root}"
 export DPLUS_SIMULATOR_FILESETS_TARGET_ROOT="{target_root}"
@@ -117,8 +116,7 @@ def test_install_without_preinstalled_dbus_next(tmp_path: Path) -> None:
 
     script = f"""
 set -eu
-SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
-export BASH_VERSION="${{BASH_VERSION:-5}}"
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-sh}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export INSTALL_ROOT="{install_root}"
 export DPLUS_SIMULATOR_FILESETS_TARGET_ROOT="{target_root}"
@@ -167,8 +165,7 @@ def test_update_file_sets_uninstall(tmp_path: Path) -> None:
 
     install_script = f"""
 set -eu
-SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
-export BASH_VERSION="${{BASH_VERSION:-5}}"
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-sh}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export INSTALL_ROOT="{install_root}"
 export DPLUS_SIMULATOR_FILESETS_TARGET_ROOT="{target_root}"
@@ -190,8 +187,7 @@ perform_install
 
     uninstall_script = f"""
 set -eu
-SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
-export BASH_VERSION="${{BASH_VERSION:-5}}"
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-sh}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export INSTALL_ROOT="{install_root}"
 export DPLUS_SIMULATOR_FILESETS_TARGET_ROOT="{target_root}"
