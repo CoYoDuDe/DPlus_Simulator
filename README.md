@@ -57,9 +57,14 @@ Die Installation wird nur gestartet, wenn folgende Voraussetzungen erfüllt sind
 - **Verfügbares `python3`** – der Interpreter muss im Pfad auffindbar sein.
 - **Python-Modul `dbus-next`** – wird per `python3 -c "import dbus_next"` geprüft.
 
+Der Installer hinterlegt die Anforderung explizit in der Datei `packageDependencies` über den Eintrag
+`pip3|dbus-next`, damit SetupHelper das Modul bei Bedarf automatisch nachinstalliert. Das Paket stellt
+die D-Bus-Kommunikation sicher, über die der Simulator seine Services und Einstellungen in Venus OS
+registriert.
+
 Fehlt eine der Komponenten, bricht der Installer kontrolliert ab und verweist auf die erforderliche
-Voraussetzung. Das `packageDependencies`-Dokument bleibt bewusst leer, da der DPlus Simulator keine
-anderen SetupHelper-Pakete erzwingt. Während eines Installationslaufs ruft das Skript – sofern SetupHelper
+Voraussetzung. Das `packageDependencies`-Dokument beschränkt sich bewusst auf diesen einen Eintrag, da der
+DPlus Simulator keine weiteren SetupHelper-Pakete erzwingt. Während eines Installationslaufs ruft das Skript – sofern SetupHelper
 eine `checkPackageDependencies`-Funktion bereitstellt – weiterhin die offizielle Konfliktprüfung mit dem
 hinterlegten Dokument auf. Bei Deinstallations- (`UNINSTALL`) oder Statusläufen (`CHECK`) wird die Prüfung
 inzwischen vollständig übersprungen, damit entfernte oder nicht mehr vorhandene Abhängigkeiten einen

@@ -12,8 +12,8 @@
   Artefakte in einem temporären Zielverzeichnis landen.
 
 ### Geändert
-- `packageDependencies` folgt nun dem SetupHelper-Format für Paketkonflikte und bleibt bewusst leer,
-  da der DPlus Simulator keine zwingenden Paketabhängigkeiten erzwingt.
+- `packageDependencies` enthält nun den Eintrag `pip3|dbus-next`, sodass SetupHelper die für die
+  D-Bus-Kommunikation benötigte Python-Abhängigkeit automatisch prüfen und installieren kann.
 - Der Installer ruft – sofern verfügbar – die offizielle `checkPackageDependencies`-Funktion des
   SetupHelper auf und protokolliert andernfalls lediglich das Überspringen der Prüfung, damit auch
   Installationen mit unveränderten Helper-Skripten störungsfrei durchlaufen.
