@@ -2,14 +2,6 @@
 set -eu
 IFS="$(printf ' \t\n')"
 
-if [ -z "${BASH_VERSION:-}" ]; then
-  if command -v bash >/dev/null 2>&1; then
-    exec bash "$0" "$@"
-  fi
-  printf '%s\n' "Dieses Skript erfordert bash." >&2
-  exit 1
-fi
-
 SCRIPT_PATH="$0"
 
 SCRIPT_PATH="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd -P)/$(basename "${SCRIPT_PATH}")"
@@ -109,7 +101,7 @@ normalize_version_string() (
   __dplus_normalize_raw="$(trim_whitespace "${1:-}")"
   __dplus_normalize_raw="${__dplus_normalize_raw#v}"
   __dplus_normalize_raw="${__dplus_normalize_raw#V}"
-  __dplus_normalize_raw="${__dplus_normalize_raw%%[^0-9.]*}"
+  __dplus_normalize_raw="$(printf '%s' "${__dplus_normalize_raw}" | tr -cd '0123456789.')"
   __dplus_normalize_raw="$(trim_whitespace "${__dplus_normalize_raw}")"
   printf '%s' "${__dplus_normalize_raw}"
 )
@@ -160,12 +152,10 @@ remember_setup_helper_root() {
 }
 
 detect_setuphelper_version() {
-  __dplus_detect_version_candidates_list=""
-  __dplus_detect_helper_cmd=""
-  __dplus_detect_candidate=""
+  set --
 
   if [ -n "${SETUP_HELPER_DETECTED_ROOT:-}" ]; then
-    __dplus_detect_version_candidates_list="${SETUP_HELPER_DETECTED_ROOT}/version"
+    set -- "$@" "${SETUP_HELPER_DETECTED_ROOT}/version"
   fi
 
   for __dplus_detect_helper_cmd in setuphelper SetupHelper helperctl; do
@@ -173,12 +163,7 @@ detect_setuphelper_version() {
       __dplus_detect_helper_bin="$(command -v "${__dplus_detect_helper_cmd}")"
       __dplus_detect_helper_root="$(cd "$(dirname "${__dplus_detect_helper_bin}")/.." && pwd -P 2>/dev/null)" || true
       if [ -n "${__dplus_detect_helper_root}" ]; then
-        if [ -n "${__dplus_detect_version_candidates_list}" ]; then
-          __dplus_detect_version_candidates_list="${__dplus_detect_version_candidates_list}
-${__dplus_detect_helper_root}/version"
-        else
-          __dplus_detect_version_candidates_list="${__dplus_detect_helper_root}/version"
-        fi
+        set -- "$@" "${__dplus_detect_helper_root}/version"
       fi
     fi
   done
@@ -189,25 +174,18 @@ ${__dplus_detect_helper_root}/version"
     "/opt/venusOS/SetupHelper/version" \
     "/usr/share/SetupHelper/version" \
     "${PROJECT_ROOT}/SetupHelper/version"; do
-    if [ -n "${__dplus_detect_version_candidates_list}" ]; then
-      __dplus_detect_version_candidates_list="${__dplus_detect_version_candidates_list}
-${__dplus_detect_candidate}"
-    else
-      __dplus_detect_version_candidates_list="${__dplus_detect_candidate}"
-    fi
+    set -- "$@" "${__dplus_detect_candidate}"
   done
 
-  if [ -z "${__dplus_detect_version_candidates_list}" ]; then
-    return 1
-  fi
+  while [ "$#" -gt 0 ]; do
+    __dplus_detect_candidate="$1"
+    shift
 
-  while IFS= read -r __dplus_detect_candidate; do
     [ -z "${__dplus_detect_candidate}" ] && continue
 
     if [ -f "${__dplus_detect_candidate}" ]; then
-      __dplus_detect_raw_version="$(<"${__dplus_detect_candidate}")"
-      __dplus_detect_raw_version="${__dplus_detect_raw_version//$'\r'/}"
-      __dplus_detect_raw_version="${__dplus_detect_raw_version//$'\n'/}"
+      __dplus_detect_raw_version="$(cat "${__dplus_detect_candidate}")"
+      __dplus_detect_raw_version="$(printf '%s' "${__dplus_detect_raw_version}" | tr -d '\r\n')"
       __dplus_detect_raw_version="$(trim_whitespace "${__dplus_detect_raw_version}")"
 
       if [ -n "${__dplus_detect_raw_version}" ]; then
@@ -219,9 +197,7 @@ ${__dplus_detect_candidate}"
         fi
       fi
     fi
-  done <<__DPLUS_DETECT_CANDIDATES_END__
-${__dplus_detect_version_candidates_list}
-__DPLUS_DETECT_CANDIDATES_END__
+  done
 
   return 1
 }
@@ -289,14 +265,14 @@ version_ge() (
       __dplus_version_ge_required_value=""
     fi
 
-    __dplus_version_ge_current_value="${__dplus_version_ge_current_value//[^0-9]/}"
-    __dplus_version_ge_required_value="${__dplus_version_ge_required_value//[^0-9]/}"
+    __dplus_version_ge_current_value="$(printf '%s' "${__dplus_version_ge_current_value}" | tr -cd '0-9')"
+    __dplus_version_ge_required_value="$(printf '%s' "${__dplus_version_ge_required_value}" | tr -cd '0-9')"
 
     __dplus_version_ge_current_value="${__dplus_version_ge_current_value:-0}"
     __dplus_version_ge_required_value="${__dplus_version_ge_required_value:-0}"
 
-    __dplus_version_ge_current_number=$((10#${__dplus_version_ge_current_value}))
-    __dplus_version_ge_required_number=$((10#${__dplus_version_ge_required_value}))
+    __dplus_version_ge_current_number=$(expr "${__dplus_version_ge_current_value:-0}" + 0)
+    __dplus_version_ge_required_number=$(expr "${__dplus_version_ge_required_value:-0}" + 0)
 
     if [ "${__dplus_version_ge_current_number}" -gt "${__dplus_version_ge_required_number}" ]; then
       return 0
@@ -899,43 +875,43 @@ define_builtin_helper_fallback() {
 }
 
 source_helper_resources() {
-  __dplus_source_helper_candidates=()
+  set --
   __dplus_source_helper_candidate=""
-
-  SETUP_HELPER_DETECTED_ROOT=""
 
   if [ -n "${SETUP_HELPER_ROOT:-}" ]; then
     if [ -d "${SETUP_HELPER_ROOT}" ]; then
-      __dplus_source_helper_candidates+=("${SETUP_HELPER_ROOT}/HelperResources")
+      set -- "$@" "${SETUP_HELPER_ROOT}/HelperResources"
     elif [ -f "${SETUP_HELPER_ROOT}" ]; then
-      __dplus_source_helper_candidates+=("${SETUP_HELPER_ROOT}")
+      set -- "$@" "${SETUP_HELPER_ROOT}"
     fi
   fi
 
   if [ -n "${HELPER_RESOURCE:-}" ]; then
-    __dplus_source_helper_candidates+=("${HELPER_RESOURCE}")
+    set -- "$@" "${HELPER_RESOURCE}"
   fi
 
-  __dplus_source_helper_candidates+=(
-    "${PROJECT_ROOT}/SetupHelper/HelperResources"
-    "/data/SetupHelper/HelperResources"
-    "/opt/venus/SetupHelper/HelperResources"
-    "/opt/venusOS/SetupHelper/HelperResources"
-    "/usr/share/SetupHelper/HelperResources"
-  )
+  for __dplus_source_helper_candidate in \
+    "${PROJECT_ROOT}/SetupHelper/HelperResources" \
+    "/data/SetupHelper/HelperResources" \
+    "/opt/venus/SetupHelper/HelperResources" \
+    "/opt/venusOS/SetupHelper/HelperResources" \
+    "/usr/share/SetupHelper/HelperResources"; do
+    set -- "$@" "${__dplus_source_helper_candidate}"
+  done
 
-  __dplus_source_helper_cmd=""
   for __dplus_source_helper_cmd in setuphelper SetupHelper helperctl; do
     if command -v "${__dplus_source_helper_cmd}" >/dev/null 2>&1; then
       __dplus_source_helper_bin="$(command -v "${__dplus_source_helper_cmd}")"
       __dplus_source_helper_root="$(cd "$(dirname "${__dplus_source_helper_bin}")/.." && pwd -P 2>/dev/null)"
       if [ -n "${__dplus_source_helper_root}" ]; then
-        __dplus_source_helper_candidates+=("${__dplus_source_helper_root}/HelperResources")
+        set -- "$@" "${__dplus_source_helper_root}/HelperResources"
       fi
     fi
   done
 
-  for __dplus_source_helper_candidate in "${__dplus_source_helper_candidates[@]}"; do
+  while [ "$#" -gt 0 ]; do
+    __dplus_source_helper_candidate="$1"
+    shift
     [ -z "${__dplus_source_helper_candidate}" ] && continue
 
     if [ -f "${__dplus_source_helper_candidate}" ] && [ -r "${__dplus_source_helper_candidate}" ]; then
@@ -961,15 +937,11 @@ source_helper_resources() {
         return
       fi
 
-      __dplus_source_helper_files=(
-        "${__dplus_source_helper_candidate}/CommonResources"
-        "${__dplus_source_helper_candidate}/ServiceResources"
-        "${__dplus_source_helper_candidate}/DbusSettingsResources"
-      )
-
-      __dplus_source_helper_file=""
       __dplus_source_helper_missing=0
-      for __dplus_source_helper_file in "${__dplus_source_helper_files[@]}"; do
+      for __dplus_source_helper_file in \
+        "${__dplus_source_helper_candidate}/CommonResources" \
+        "${__dplus_source_helper_candidate}/ServiceResources" \
+        "${__dplus_source_helper_candidate}/DbusSettingsResources"; do
         if [ -r "${__dplus_source_helper_file}" ]; then
           # shellcheck disable=SC1090
           . "${__dplus_source_helper_file}"
@@ -1009,20 +981,20 @@ end_helper_session() {
 }
 
 finalize_helper_session() {
-  __dplus_finalize_helper_flags=()
+  set --
 
   if [ "${filesUpdated}" = true ]; then
-    __dplus_finalize_helper_flags+=("INSTALL_FILES")
+    set -- "$@" "INSTALL_FILES"
   fi
   if [ "${servicesUpdated}" = true ]; then
-    __dplus_finalize_helper_flags+=("INSTALL_SERVICES")
+    set -- "$@" "INSTALL_SERVICES"
   fi
   if [ "${dbusSettingsUpdated}" = true ]; then
-    __dplus_finalize_helper_flags+=("ADD_DBUS_SETTINGS")
+    set -- "$@" "ADD_DBUS_SETTINGS"
   fi
 
   __dplus_finalize_helper_end_status=0
-  if ! end_helper_session "${__dplus_finalize_helper_flags[@]}"; then
+  if ! end_helper_session "$@"; then
     __dplus_finalize_helper_end_status=$?
   fi
 
@@ -1064,13 +1036,16 @@ build_dbus_settings_entries() {
   while IFS= read -r __dplus_build_dbus_line || [ -n "${__dplus_build_dbus_line}" ]; do
     __dplus_build_dbus_trimmed="$(trim_whitespace "${__dplus_build_dbus_line}")"
     if [ -n "${__dplus_build_dbus_trimmed}" ]; then
-      __dplus_build_dbus_buffer+="${__dplus_build_dbus_trimmed}"$'\n'
+      if [ -n "${__dplus_build_dbus_buffer}" ]; then
+        __dplus_build_dbus_buffer="$(printf '%s\n%s' "${__dplus_build_dbus_buffer}" "${__dplus_build_dbus_trimmed}")"
+      else
+        __dplus_build_dbus_buffer="${__dplus_build_dbus_trimmed}"
+      fi
       __dplus_build_dbus_count=$((__dplus_build_dbus_count + 1))
     fi
   done < "${__dplus_build_dbus_list_path}"
 
   if [ "${__dplus_build_dbus_count}" -gt 0 ]; then
-    __dplus_build_dbus_buffer="${__dplus_build_dbus_buffer%$'\n'}"
     _dbus_settings_entries_payload="${__dplus_build_dbus_buffer}"
     _dbus_settings_entry_count=${__dplus_build_dbus_count}
     _dbus_settings_multiline="${__dplus_build_dbus_buffer}"
@@ -1085,18 +1060,7 @@ write_dbus_settings_file() {
   __dplus_write_dbus_output_path="$1"
 
   if [ "${_dbus_settings_entry_count}" -gt 0 ]; then
-    (
-      __dplus_write_dbus_line=""
-      set --
-      while IFS= read -r __dplus_write_dbus_line || [ -n "${__dplus_write_dbus_line}" ]; do
-        set -- "$@" "${__dplus_write_dbus_line}"
-      done < <(printf '%s\n' "${_dbus_settings_entries_payload}")
-
-      while [ "$#" -gt 0 ]; do
-        printf '%s\n' "$1"
-        shift
-      done
-    ) > "${__dplus_write_dbus_output_path}"
+    printf '%s\n' "${_dbus_settings_multiline}" > "${__dplus_write_dbus_output_path}"
   else
     : > "${__dplus_write_dbus_output_path}"
   fi

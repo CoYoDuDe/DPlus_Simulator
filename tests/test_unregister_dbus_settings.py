@@ -39,8 +39,7 @@ def test_unregister_dbus_settings_uses_remove_all(tmp_path: Path) -> None:
 
     script = f"""
 set -eu
-SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
-export BASH_VERSION="${{BASH_VERSION:-5}}"
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-sh}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export INSTALL_ROOT="{install_root}"
 export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
@@ -129,8 +128,7 @@ def test_perform_uninstall_reports_end_script_flags(tmp_path: Path) -> None:
 
     script = f"""
 set -eu
-SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
-export BASH_VERSION="${{BASH_VERSION:-5}}"
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-sh}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export INSTALL_ROOT="{install_root}"
 export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
@@ -232,8 +230,7 @@ def test_unregister_dbus_settings_fails_when_helper_removal_fails(tmp_path: Path
 
     script = f"""
 set -eu
-SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
-export BASH_VERSION="${{BASH_VERSION:-5}}"
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-sh}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
 export INSTALL_ROOT="{install_root}"
 export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
