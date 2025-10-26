@@ -878,6 +878,7 @@ source_helper_resources() {
   __dplus_source_helper_candidate=""
   __dplus_source_helper_candidates=""
   __dplus_source_helper_result=1
+  __dplus_source_helper_sourced=0
 
   __dplus_source_helper_append_candidate() {
     __dplus_source_helper_append_value="$1"
@@ -934,7 +935,9 @@ ${__dplus_source_helper_append_value}"
       remember_setup_helper_root "${__dplus_source_helper_candidate}"
       # shellcheck disable=SC1090
       . "${__dplus_source_helper_candidate}"
-      __dplus_source_helper_result=0
+      __dplus_source_helper_status=$?
+      __dplus_source_helper_result="${__dplus_source_helper_status}"
+      __dplus_source_helper_sourced=1
       break
     fi
 
@@ -944,7 +947,9 @@ ${__dplus_source_helper_append_value}"
         remember_setup_helper_root "${__dplus_source_helper_candidate}/forSetupScript"
         # shellcheck disable=SC1090
         . "${__dplus_source_helper_candidate}/forSetupScript"
-        __dplus_source_helper_result=0
+        __dplus_source_helper_status=$?
+        __dplus_source_helper_result="${__dplus_source_helper_status}"
+        __dplus_source_helper_sourced=1
         break
       fi
 
@@ -952,7 +957,9 @@ ${__dplus_source_helper_append_value}"
         remember_setup_helper_root "${__dplus_source_helper_candidate}/IncludeHelpers"
         # shellcheck disable=SC1090
         . "${__dplus_source_helper_candidate}/IncludeHelpers"
-        __dplus_source_helper_result=0
+        __dplus_source_helper_status=$?
+        __dplus_source_helper_result="${__dplus_source_helper_status}"
+        __dplus_source_helper_sourced=1
         break
       fi
 
@@ -972,13 +979,14 @@ ${__dplus_source_helper_append_value}"
 
       if [ "${__dplus_source_helper_missing}" -eq 0 ]; then
         __dplus_source_helper_result=0
+        __dplus_source_helper_sourced=1
         break
       fi
     fi
   done
   IFS="${__dplus_source_helper_saved_ifs}"
 
-  if [ "${__dplus_source_helper_result}" -ne 0 ]; then
+  if [ "${__dplus_source_helper_sourced}" -eq 0 ] && [ "${__dplus_source_helper_result}" -ne 0 ]; then
     if define_builtin_helper_fallback; then
       __dplus_source_helper_result=0
     else
