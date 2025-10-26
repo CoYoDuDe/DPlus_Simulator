@@ -875,19 +875,34 @@ define_builtin_helper_fallback() {
 }
 
 source_helper_resources() {
-  set --
   __dplus_source_helper_candidate=""
+  __dplus_source_helper_candidates=""
+  __dplus_source_helper_result=1
+
+  __dplus_source_helper_append_candidate() {
+    __dplus_source_helper_append_value="$1"
+    if [ -z "${__dplus_source_helper_append_value}" ]; then
+      return 0
+    fi
+    if [ -n "${__dplus_source_helper_candidates}" ]; then
+      __dplus_source_helper_candidates="${__dplus_source_helper_candidates}
+${__dplus_source_helper_append_value}"
+    else
+      __dplus_source_helper_candidates="${__dplus_source_helper_append_value}"
+    fi
+    return 0
+  }
 
   if [ -n "${SETUP_HELPER_ROOT:-}" ]; then
     if [ -d "${SETUP_HELPER_ROOT}" ]; then
-      set -- "$@" "${SETUP_HELPER_ROOT}/HelperResources"
+      __dplus_source_helper_append_candidate "${SETUP_HELPER_ROOT}/HelperResources"
     elif [ -f "${SETUP_HELPER_ROOT}" ]; then
-      set -- "$@" "${SETUP_HELPER_ROOT}"
+      __dplus_source_helper_append_candidate "${SETUP_HELPER_ROOT}"
     fi
   fi
 
   if [ -n "${HELPER_RESOURCE:-}" ]; then
-    set -- "$@" "${HELPER_RESOURCE}"
+    __dplus_source_helper_append_candidate "${HELPER_RESOURCE}"
   fi
 
   for __dplus_source_helper_candidate in \
@@ -896,7 +911,7 @@ source_helper_resources() {
     "/opt/venus/SetupHelper/HelperResources" \
     "/opt/venusOS/SetupHelper/HelperResources" \
     "/usr/share/SetupHelper/HelperResources"; do
-    set -- "$@" "${__dplus_source_helper_candidate}"
+    __dplus_source_helper_append_candidate "${__dplus_source_helper_candidate}"
   done
 
   for __dplus_source_helper_cmd in setuphelper SetupHelper helperctl; do
@@ -904,21 +919,23 @@ source_helper_resources() {
       __dplus_source_helper_bin="$(command -v "${__dplus_source_helper_cmd}")"
       __dplus_source_helper_root="$(cd "$(dirname "${__dplus_source_helper_bin}")/.." && pwd -P 2>/dev/null)"
       if [ -n "${__dplus_source_helper_root}" ]; then
-        set -- "$@" "${__dplus_source_helper_root}/HelperResources"
+        __dplus_source_helper_append_candidate "${__dplus_source_helper_root}/HelperResources"
       fi
     fi
   done
 
-  while [ "$#" -gt 0 ]; do
-    __dplus_source_helper_candidate="$1"
-    shift
+  __dplus_source_helper_saved_ifs="${IFS}"
+  IFS='
+'
+  for __dplus_source_helper_candidate in ${__dplus_source_helper_candidates}; do
     [ -z "${__dplus_source_helper_candidate}" ] && continue
 
     if [ -f "${__dplus_source_helper_candidate}" ] && [ -r "${__dplus_source_helper_candidate}" ]; then
       remember_setup_helper_root "${__dplus_source_helper_candidate}"
       # shellcheck disable=SC1090
       . "${__dplus_source_helper_candidate}"
-      return
+      __dplus_source_helper_result=0
+      break
     fi
 
     if [ -d "${__dplus_source_helper_candidate}" ]; then
@@ -927,14 +944,16 @@ source_helper_resources() {
         remember_setup_helper_root "${__dplus_source_helper_candidate}/forSetupScript"
         # shellcheck disable=SC1090
         . "${__dplus_source_helper_candidate}/forSetupScript"
-        return
+        __dplus_source_helper_result=0
+        break
       fi
 
       if [ -r "${__dplus_source_helper_candidate}/IncludeHelpers" ]; then
         remember_setup_helper_root "${__dplus_source_helper_candidate}/IncludeHelpers"
         # shellcheck disable=SC1090
         . "${__dplus_source_helper_candidate}/IncludeHelpers"
-        return
+        __dplus_source_helper_result=0
+        break
       fi
 
       __dplus_source_helper_missing=0
@@ -952,12 +971,23 @@ source_helper_resources() {
       done
 
       if [ "${__dplus_source_helper_missing}" -eq 0 ]; then
-        return
+        __dplus_source_helper_result=0
+        break
       fi
     fi
   done
+  IFS="${__dplus_source_helper_saved_ifs}"
 
-  define_builtin_helper_fallback
+  if [ "${__dplus_source_helper_result}" -ne 0 ]; then
+    if define_builtin_helper_fallback; then
+      __dplus_source_helper_result=0
+    else
+      __dplus_source_helper_status=$?
+      __dplus_source_helper_result="${__dplus_source_helper_status}"
+    fi
+  fi
+
+  return "${__dplus_source_helper_result}"
 }
 
 begin_helper_session() {
