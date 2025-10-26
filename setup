@@ -293,12 +293,40 @@ require_setuphelper_version() {
     return
   fi
 
+  __dplus_require_in_fallback=false
+  if [ -n "${__DPLUS_HELPER_FALLBACK_DEFINED:-}" ] || [ -z "${SETUP_HELPER_DETECTED_ROOT:-}" ]; then
+    __dplus_require_in_fallback=true
+  fi
+
   if ! detect_setuphelper_version; then
+    if [ "${__dplus_require_in_fallback}" = true ]; then
+      if [ -z "${SETUP_HELPER_VERSION_NORMALIZED:-}" ]; then
+        SETUP_HELPER_VERSION_NORMALIZED="0.0.0"
+      fi
+      if [ -z "${SETUP_HELPER_VERSION_RAW:-}" ]; then
+        SETUP_HELPER_VERSION_RAW="Fallback"
+      fi
+      log WARN "SetupHelper-Fallback aktiv – überspringe Versionsprüfung (erforderlich ${__dplus_require_setuphelper_version_required})."
+      return
+    fi
     die "SetupHelper-Version konnte nicht ermittelt werden. Bitte installieren Sie SetupHelper >= ${__dplus_require_setuphelper_version_required}."
   fi
 
   if [ -z "${SETUP_HELPER_VERSION_NORMALIZED}" ]; then
+    if [ "${__dplus_require_in_fallback}" = true ]; then
+      SETUP_HELPER_VERSION_NORMALIZED="0.0.0"
+      if [ -z "${SETUP_HELPER_VERSION_RAW:-}" ]; then
+        SETUP_HELPER_VERSION_RAW="Fallback"
+      fi
+      log WARN "SetupHelper-Fallback aktiv – überspringe Versionsprüfung (erforderlich ${__dplus_require_setuphelper_version_required})."
+      return
+    fi
     die "SetupHelper-Version konnte nicht interpretiert werden."
+  fi
+
+  if [ "${__dplus_require_in_fallback}" = true ]; then
+    log WARN "SetupHelper-Fallback aktiv – überspringe Versionsprüfung (erforderlich ${__dplus_require_setuphelper_version_required})."
+    return
   fi
 
   if ! version_ge "${SETUP_HELPER_VERSION_NORMALIZED}" "${__dplus_require_setuphelper_version_required}"; then
