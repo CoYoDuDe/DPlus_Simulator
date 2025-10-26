@@ -31,25 +31,32 @@ def test_register_dbus_settings_generates_json(tmp_path: Path) -> None:
     log_file = tmp_path / "helper_calls.log"
 
     script = f"""
-set -euo pipefail
+set -eu
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
+export BASH_VERSION="${{BASH_VERSION:-5}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
-export INSTALL_ROOT=\"{install_root}\"
-source "{setup_script}"
+export INSTALL_ROOT="{install_root}"
+export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
+export DPLUS_TEST_LOG_FILE="{log_file}"
+export DPLUS_TEST_REPO_ROOT="{repo_root}"
+"$SETUP_SHELL" -c 'set -eu
+. "$DPLUS_TEST_SETUP_SCRIPT"
 addAllDbusSettings() {{
-  printf 'addAll|%s|%s\n' "$#" "$*" >> "{log_file}"
-  if [[ -f "{repo_root}/DbusSettingsList" ]]; then
-    printf 'unexpected-copy' >> /dev/null
+  printf "addAll|%s|%s\n" "$#" "$*" >> "$DPLUS_TEST_LOG_FILE"
+  if [ -f "$DPLUS_TEST_REPO_ROOT/DbusSettingsList" ]; then
+    printf "unexpected-copy" >> /dev/null
   fi
   return 0
 }}
 endScript() {{
-  printf 'endScript|%s\n' "$*" >> "{log_file}"
+  printf "endScript|%s\n" "$*" >> "$DPLUS_TEST_LOG_FILE"
   return 0
 }}
 register_dbus_settings
+'
 """
 
-    subprocess.run(["bash", "-c", script], check=True, cwd=repo_root)
+    subprocess.run(["sh", "-c", script], check=True, cwd=repo_root)
     _cleanup_helper_state(repo_root)
 
     if log_file.exists():
@@ -95,57 +102,83 @@ def test_perform_install_reports_end_script_flags(tmp_path: Path) -> None:
     install_root = tmp_path / "install_root"
     payload_file = tmp_path / "end_payload.json"
     log_file = tmp_path / "end_script.log"
+    helper_root = tmp_path / "helper"
+    module_root = tmp_path / "pysite"
+
+    helper_root.mkdir()
+    (helper_root / "version").write_text("8.20\n", encoding="utf-8")
+    module_root.mkdir()
+    (module_root / "dbus_next").mkdir()
+    (module_root / "dbus_next" / "__init__.py").write_text("# stub\n", encoding="utf-8")
 
     script = f"""
-set -euo pipefail
+set -eu
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
+export BASH_VERSION="${{BASH_VERSION:-5}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
-export INSTALL_ROOT=\"{install_root}\"
-source \"{setup_script}\"
-source_helper_resources
-unset __DPLUS_HELPER_FALLBACK_DEFINED
+export INSTALL_ROOT="{install_root}"
+    export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
+    export DPLUS_TEST_LOG_FILE="{log_file}"
+    export DPLUS_TEST_PAYLOAD_FILE="{payload_file}"
+    export DPLUS_TEST_REPO_ROOT="{repo_root}"
+    export DPLUS_TEST_HELPER_ROOT="{helper_root}"
+    export DPLUS_TEST_MODULE_ROOT="{module_root}"
+    "$SETUP_SHELL" -c 'set -eu
+    . "$DPLUS_TEST_SETUP_SCRIPT"
+    SETUP_HELPER_DETECTED_ROOT="$DPLUS_TEST_HELPER_ROOT"
+    source_helper_resources
+    unset __DPLUS_HELPER_FALLBACK_DEFINED
+    PYTHONPATH="$DPLUS_TEST_MODULE_ROOT:${{PYTHONPATH:-}}"
+    export PYTHONPATH
 
 perform_install_preflight() {{
   return 0
 }}
 
 install_payload() {{
-  printf 'install_payload\\n' >> \"{log_file}\"
+  printf "install_payload\n" >> "$DPLUS_TEST_LOG_FILE"
   return 0
 }}
 
 install_service() {{
-  printf 'install_service\\n' >> \"{log_file}\"
+  printf "install_service\n" >> "$DPLUS_TEST_LOG_FILE"
   return 0
 }}
 
 addAllDbusSettings() {{
-  printf 'addAll|%s|%s\n' "$#" "$*" >> "{log_file}"
-  local payload_path="${{1:-}}"
-  if [[ -n "${{payload_path}}" && -f "${{payload_path}}" ]]; then
-    cp "${{payload_path}}" "{payload_file}"
-  elif [[ -f "{repo_root}/DbusSettingsList" ]]; then
-    cp "{repo_root}/DbusSettingsList" "{payload_file}"
+  printf "addAll|%s|%s\n" "$#" "$*" >> "$DPLUS_TEST_LOG_FILE"
+  payload_path=""
+  if [ "$#" -ge 1 ]; then
+    payload_path="$1"
+  fi
+  if [ -n "${{payload_path}}" ] && [ -f "${{payload_path}}" ]; then
+    cp "${{payload_path}}" "$DPLUS_TEST_PAYLOAD_FILE"
+  elif [ -f "$DPLUS_TEST_REPO_ROOT/DbusSettingsList" ]; then
+    cp "$DPLUS_TEST_REPO_ROOT/DbusSettingsList" "$DPLUS_TEST_PAYLOAD_FILE"
   fi
   return 0
 }}
 
 endScript() {{
-  printf 'endScript-begin:%s\\n' \"$*\" >> \"{log_file}\"
-  if [[ "$*" == *"ADD_DBUS_SETTINGS"* ]]; then
-    if [[ -f "{repo_root}/DbusSettingsList" ]]; then
-      addAllDbusSettings "{repo_root}/DbusSettingsList"
-    else
-      addAllDbusSettings
-    fi
-  fi
-  printf 'endScript-end:%s\\n' \"$*\" >> \"{log_file}\"
+  printf "endScript-begin:%s\n" "$*" >> "$DPLUS_TEST_LOG_FILE"
+  case "$*" in
+    *"ADD_DBUS_SETTINGS"*)
+      if [ -f "$DPLUS_TEST_REPO_ROOT/DbusSettingsList" ]; then
+        addAllDbusSettings "$DPLUS_TEST_REPO_ROOT/DbusSettingsList"
+      else
+        addAllDbusSettings
+      fi
+      ;;
+  esac
+  printf "endScript-end:%s\n" "$*" >> "$DPLUS_TEST_LOG_FILE"
   return 0
 }}
 
 perform_install
+'
 """
 
-    subprocess.run(["bash", "-c", script], check=True, cwd=repo_root)
+    subprocess.run(["sh", "-c", script], check=True, cwd=repo_root)
     _cleanup_helper_state(repo_root)
 
     payload = _load_line_delimited_json(payload_file)

@@ -27,21 +27,28 @@ def test_register_package_dependencies_uses_check(tmp_path: Path) -> None:
     dependencies_file.write_text("conflict\n", encoding="utf-8")
 
     script = f"""
-set -euo pipefail
+set -eu
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
+export BASH_VERSION="${{BASH_VERSION:-5}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
-source "{setup_script}"
-PACKAGE_DEPENDENCIES_FILE="{dependencies_file}"
+export DPLUS_TEST_DEPENDENCIES_FILE="{dependencies_file}"
+export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
+export DPLUS_TEST_LOG_FILE="{log_file}"
+"$SETUP_SHELL" -c 'set -eu
+. "$DPLUS_TEST_SETUP_SCRIPT"
+PACKAGE_DEPENDENCIES_FILE="$DPLUS_TEST_DEPENDENCIES_FILE"
 scriptAction=INSTALL
 
 checkPackageDependencies() {{
-  printf 'check:%s\\n' "$1" >> "{log_file}"
+  printf "check:%s\n" "$1" >> "$DPLUS_TEST_LOG_FILE"
   return 0
 }}
 
 register_package_dependencies
+'
 """
 
-    subprocess.run(["bash", "-c", script], check=True, cwd=repo_root)
+    subprocess.run(["sh", "-c", script], check=True, cwd=repo_root)
     _cleanup_helper_state(repo_root)
 
     log_lines = log_file.read_text(encoding="utf-8").splitlines()
@@ -56,17 +63,23 @@ def test_register_package_dependencies_skips_without_helper(tmp_path: Path) -> N
     dependencies_file.write_text("conflict\n", encoding="utf-8")
 
     script = f"""
-set -euo pipefail
+set -eu
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
+export BASH_VERSION="${{BASH_VERSION:-5}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
-source "{setup_script}"
-PACKAGE_DEPENDENCIES_FILE="{dependencies_file}"
+export DPLUS_TEST_DEPENDENCIES_FILE="{dependencies_file}"
+export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
+"$SETUP_SHELL" -c 'set -eu
+. "$DPLUS_TEST_SETUP_SCRIPT"
+PACKAGE_DEPENDENCIES_FILE="$DPLUS_TEST_DEPENDENCIES_FILE"
 scriptAction=INSTALL
 
 register_package_dependencies
+'
 """
 
     completed = subprocess.run(
-        ["bash", "-c", script],
+        ["sh", "-c", script],
         check=True,
         cwd=repo_root,
         capture_output=True,
@@ -90,21 +103,28 @@ def test_register_package_dependencies_skips_for_uninstall(tmp_path: Path) -> No
     dependencies_file.write_text("conflict\n", encoding="utf-8")
 
     script = f"""
-set -euo pipefail
+set -eu
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
+export BASH_VERSION="${{BASH_VERSION:-5}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
-source "{setup_script}"
-PACKAGE_DEPENDENCIES_FILE="{dependencies_file}"
+export DPLUS_TEST_DEPENDENCIES_FILE="{dependencies_file}"
+export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
+export DPLUS_TEST_LOG_FILE="{log_file}"
+"$SETUP_SHELL" -c 'set -eu
+. "$DPLUS_TEST_SETUP_SCRIPT"
+PACKAGE_DEPENDENCIES_FILE="$DPLUS_TEST_DEPENDENCIES_FILE"
 scriptAction=UNINSTALL
 
 checkPackageDependencies() {{
-  printf 'check:%s\\n' "$1" >> "{log_file}"
+  printf "check:%s\n" "$1" >> "$DPLUS_TEST_LOG_FILE"
   return 0
 }}
 
 register_package_dependencies
+'
 """
 
-    subprocess.run(["bash", "-c", script], check=True, cwd=repo_root)
+    subprocess.run(["sh", "-c", script], check=True, cwd=repo_root)
     _cleanup_helper_state(repo_root)
 
     assert not log_file.exists(), "checkPackageDependencies darf bei UNINSTALL nicht aufgerufen werden."
@@ -119,21 +139,28 @@ def test_register_package_dependencies_skips_for_status(tmp_path: Path) -> None:
     dependencies_file.write_text("conflict\n", encoding="utf-8")
 
     script = f"""
-set -euo pipefail
+set -eu
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
+export BASH_VERSION="${{BASH_VERSION:-5}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
-source "{setup_script}"
-PACKAGE_DEPENDENCIES_FILE="{dependencies_file}"
+export DPLUS_TEST_DEPENDENCIES_FILE="{dependencies_file}"
+export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
+export DPLUS_TEST_LOG_FILE="{log_file}"
+"$SETUP_SHELL" -c 'set -eu
+. "$DPLUS_TEST_SETUP_SCRIPT"
+PACKAGE_DEPENDENCIES_FILE="$DPLUS_TEST_DEPENDENCIES_FILE"
 scriptAction=CHECK
 
 checkPackageDependencies() {{
-  printf 'check:%s\\n' "$1" >> "{log_file}"
+  printf "check:%s\n" "$1" >> "$DPLUS_TEST_LOG_FILE"
   return 0
 }}
 
 register_package_dependencies
+'
 """
 
-    subprocess.run(["bash", "-c", script], check=True, cwd=repo_root)
+    subprocess.run(["sh", "-c", script], check=True, cwd=repo_root)
     _cleanup_helper_state(repo_root)
 
     assert not log_file.exists(), "checkPackageDependencies darf bei CHECK nicht aufgerufen werden."
@@ -148,22 +175,29 @@ def test_register_package_dependencies_fails_on_conflict(tmp_path: Path) -> None
     dependencies_file.write_text("conflict\n", encoding="utf-8")
 
     script = f"""
-set -euo pipefail
+set -eu
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
+export BASH_VERSION="${{BASH_VERSION:-5}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
-source "{setup_script}"
-PACKAGE_DEPENDENCIES_FILE="{dependencies_file}"
+export DPLUS_TEST_DEPENDENCIES_FILE="{dependencies_file}"
+export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
+export DPLUS_TEST_LOG_FILE="{log_file}"
+"$SETUP_SHELL" -c 'set -eu
+. "$DPLUS_TEST_SETUP_SCRIPT"
+PACKAGE_DEPENDENCIES_FILE="$DPLUS_TEST_DEPENDENCIES_FILE"
 scriptAction=INSTALL
 
 checkPackageDependencies() {{
-  printf 'check:%s\\n' "$1" >> "{log_file}"
+  printf "check:%s\n" "$1" >> "$DPLUS_TEST_LOG_FILE"
   return 3
 }}
 
 register_package_dependencies
+'
 """
 
     completed = subprocess.run(
-        ["bash", "-c", script],
+        ["sh", "-c", script],
         check=False,
         cwd=repo_root,
         capture_output=True,
@@ -186,10 +220,15 @@ def test_register_package_dependencies_aborts_on_helper_abort(tmp_path: Path) ->
     dependencies_file.write_text("conflict\n", encoding="utf-8")
 
     script = f"""
-set -euo pipefail
+set -eu
+SETUP_SHELL="${{DPLUS_TEST_SETUP_SHELL:-bash}}"
+export BASH_VERSION="${{BASH_VERSION:-5}}"
 export DPLUS_SIMULATOR_SKIP_MAIN=1
-source "{setup_script}"
-PACKAGE_DEPENDENCIES_FILE="{dependencies_file}"
+export DPLUS_TEST_DEPENDENCIES_FILE="{dependencies_file}"
+export DPLUS_TEST_SETUP_SCRIPT="{setup_script}"
+"$SETUP_SHELL" -c 'set -eu
+. "$DPLUS_TEST_SETUP_SCRIPT"
+PACKAGE_DEPENDENCIES_FILE="$DPLUS_TEST_DEPENDENCIES_FILE"
 scriptAction=INSTALL
 
 checkPackageDependencies() {{
@@ -200,10 +239,11 @@ checkPackageDependencies() {{
 }}
 
 register_package_dependencies
+'
 """
 
     completed = subprocess.run(
-        ["bash", "-c", script],
+        ["sh", "-c", script],
         check=False,
         cwd=repo_root,
         capture_output=True,
