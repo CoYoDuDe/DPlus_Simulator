@@ -1239,10 +1239,18 @@ main() {
   __dplus_main_cli_action="${1:-}"
   __dplus_main_normalized_cli=""
 
+  source_helper_resources
+
   if [ -n "${__dplus_main_cli_action}" ]; then
     case "${__dplus_main_cli_action}" in
       install|uninstall|status)
         __dplus_main_normalized_cli="${__dplus_main_cli_action}"
+        ;;
+      check)
+        __dplus_main_normalized_cli="status"
+        ;;
+      auto|runFromPm)
+        __dplus_main_normalized_cli=""
         ;;
       -h|--help)
         usage
@@ -1287,6 +1295,10 @@ main() {
         INSTALL) __dplus_main_normalized_cli="install" ;;
         UNINSTALL) __dplus_main_normalized_cli="uninstall" ;;
         CHECK) __dplus_main_normalized_cli="status" ;;
+        NONE)
+          __dplus_main_helper_action="INSTALL"
+          __dplus_main_normalized_cli="install"
+          ;;
         *)
           log WARN "Unbekannte scriptAction ${__dplus_main_helper_action}, verwende INSTALL"
           __dplus_main_helper_action="INSTALL"
@@ -1316,8 +1328,6 @@ main() {
         ;;
     esac
   fi
-
-  source_helper_resources
 
   case "${scriptAction}" in
     INSTALL)
