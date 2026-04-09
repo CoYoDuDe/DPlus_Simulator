@@ -12,6 +12,7 @@
   Artefakte in einem temporären Zielverzeichnis landen.
 
 ### Geändert
+- Die DPlus-GUI wurde nochmals vereinfacht und in stabile Unterseiten (`Ausgang`, `Eingänge`, `Schaltschwellen`, `Verzögerungen`, `Manuelle Steuerung`) aufgeteilt. Die problematischen Überschriften mit `font.*` sind entfernt.
 - Die QML-Einstellungsseite verwendet jetzt ausschließlich konservative GUI-v1-Elemente (`Mb*`, `VBusItem`) ohne `QtDBus`, `Qt.createQmlObject` oder andere dynamische Laufzeit-Konstrukte. Die automatische Erkennung von `ServicePath`/`VoltagePath` verbleibt vollständig im Python-Dienst.
 - `packageDependencies` bleibt leer, weil der `kwindrem`-SetupHelper dort nur Paketkonflikte
   zwischen SetupHelper-Add-ons auswertet; die zum Betrieb der D-Bus-Kommunikation benötigte

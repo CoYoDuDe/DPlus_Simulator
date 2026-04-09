@@ -1,328 +1,332 @@
-//// D+ simulator settings page
-
 import QtQuick 2
 import "utils.js" as Utils
 import com.victron.velib 1.0
 
 MbPage {
-        id: root
-        title: qsTr("D+ simulator")
+	id: root
+	title: qsTr("D+ simulator")
 
-        property string settingsPrefix: "com.victronenergy.settings/Settings/Devices/DPlusSim"
+	property string settingsPrefix: "com.victronenergy.settings/Settings/Devices/DPlusSim"
+	property VBusItem outputModeItem: VBusItem { bind: settingsPath("/OutputMode") }
+	property VBusItem useIgnitionItem: VBusItem { bind: settingsPath("/UseIgnition") }
+	property VBusItem dbusBusStatusItem: VBusItem { bind: settingsPath("/DbusBus") }
+	property VBusItem servicePathStatusItem: VBusItem { bind: settingsPath("/ServicePath") }
+	property VBusItem voltagePathStatusItem: VBusItem { bind: settingsPath("/VoltagePath") }
 
-        property VBusItem outputModeItem: VBusItem { bind: settingsPath("/OutputMode") }
-        property VBusItem useIgnitionItem: VBusItem { bind: settingsPath("/UseIgnition") }
-        property VBusItem dbusBusStatusItem: VBusItem { bind: settingsPath("/DbusBus") }
-        property VBusItem servicePathStatusItem: VBusItem { bind: settingsPath("/ServicePath") }
-        property VBusItem voltagePathStatusItem: VBusItem { bind: settingsPath("/VoltagePath") }
+	function settingsPath(suffix) {
+		return Utils.path(settingsPrefix, suffix)
+	}
 
-        function settingsPath(suffix) {
-                return Utils.path(settingsPrefix, suffix)
-        }
+	function textValue(item, fallback) {
+		if (item && item.valid && item.value !== undefined && item.value !== null) {
+			var value = item.value.toString()
+			if (value.length)
+				return value
+		}
+		return fallback || ""
+	}
 
-        function textValue(item, fallback) {
-                if (item && item.valid && item.value !== undefined && item.value !== null) {
-                        var value = item.value.toString()
-                        if (value.length)
-                                return value
-                }
-                return fallback || ""
-        }
+	function numericValue(text) {
+		var value = parseFloat(text)
+		if (isNaN(value))
+			return undefined
+		return value
+	}
 
-        function numericValue(text) {
-                var value = parseFloat(text)
-                if (isNaN(value))
-                        return undefined
-                return value
-        }
+	function positiveDelayValue(text) {
+		var value = numericValue(text)
+		if (value === undefined)
+			return undefined
+		if (value < 0.2)
+			value = 0.2
+		return value
+	}
 
-        function positiveDelayValue(text) {
-                var value = numericValue(text)
-                if (value === undefined)
-                        return undefined
-                if (value < 0.2)
-                        value = 0.2
-                return value
-        }
+	model: VisibleItemModel {
+		MbItemText {
+			text: qsTr("Konfiguriere den virtuellen D+-Ausgang des D+ Simulator-Dienstes.")
+			wrapMode: Text.WordWrap
+		}
 
-        model: VisibleItemModel {
-                MbItemText {
-                        text: qsTr("Konfiguriere den virtuellen D+-Ausgang des D+ Simulator-Dienstes.")
-                        wrapMode: Text.WordWrap
-                }
+		MbSubMenu {
+			description: qsTr("Ausgang")
+			subpage: Component {
+				MbPage {
+					title: qsTr("Ausgang")
+					model: VisibleItemModel {
+						MbItemOptions {
+							description: qsTr("Ausgangsmodus")
+							bind: root.settingsPath("/OutputMode")
+							possibleValues: [
+								MbOption { description: qsTr("GPIO-Pin"); value: "gpio" },
+								MbOption { description: qsTr("Relay"); value: "relay" }
+							]
+							writeAccessLevel: User.AccessInstaller
+						}
 
-                MbItemText {
-                        text: qsTr("Ausgang")
-                        font.pixelSize: 20
-                        font.bold: true
-                }
+						MbEditBox {
+							description: qsTr("GPIO-Pin")
+							item.bind: root.settingsPath("/GpioPin")
+							inputMethodHints: Qt.ImhDigitsOnly
+							maximumLength: 2
+							show: root.textValue(root.outputModeItem, "gpio") !== "relay"
+							writeAccessLevel: User.AccessInstaller
+							onEditDone: {
+								var value = parseInt(newValue, 10)
+								if (!isNaN(value))
+									item.setValue(value)
+							}
+						}
 
-                MbItemOptions {
-                        id: outputModeOptions
-                        description: qsTr("Ausgangsmodus")
-                        bind: settingsPath("/OutputMode")
-                        possibleValues: [
-                                MbOption { description: qsTr("GPIO-Pin"); value: "gpio" },
-                                MbOption { description: qsTr("Relay"); value: "relay" }
-                        ]
-                        writeAccessLevel: User.AccessInstaller
-                }
+						MbEditBox {
+							description: qsTr("Relay-Kanal")
+							item.bind: root.settingsPath("/RelayChannel")
+							maximumLength: 40
+							overwriteMode: false
+							show: root.textValue(root.outputModeItem, "gpio") === "relay"
+							writeAccessLevel: User.AccessInstaller
+						}
 
-                MbEditBox {
-                        description: qsTr("GPIO-Pin")
-                        item.bind: settingsPath("/GpioPin")
-                        inputMethodHints: Qt.ImhDigitsOnly
-                        maximumLength: 2
-                        show: textValue(outputModeItem, "gpio") !== "relay"
-                        writeAccessLevel: User.AccessInstaller
-                        onEditDone: {
-                                var value = parseInt(newValue, 10)
-                                if (!isNaN(value))
-                                        item.setValue(value)
-                        }
-                }
+						MbItemText {
+							text: qsTr("Im Relay-Modus muss gpiosetup den gewünschten Relay-Kanal bereits bereitstellen.")
+							wrapMode: Text.WordWrap
+							show: root.textValue(root.outputModeItem, "gpio") === "relay"
+						}
+					}
+				}
+			}
+		}
 
-                MbEditBox {
-                        description: qsTr("Relay-Kanal")
-                        item.bind: settingsPath("/RelayChannel")
-                        maximumLength: 40
-                        overwriteMode: false
-                        show: textValue(outputModeItem, "gpio") === "relay"
-                        writeAccessLevel: User.AccessInstaller
-                }
+		MbSubMenu {
+			description: qsTr("Eingänge")
+			subpage: Component {
+				MbPage {
+					title: qsTr("Eingänge")
+					model: VisibleItemModel {
+						MbSwitch {
+							name: qsTr("Zündsignal verwenden")
+							bind: root.settingsPath("/UseIgnition")
+							valueTrue: 1
+							valueFalse: 0
+							writeAccessLevel: User.AccessInstaller
+						}
 
-                MbItemText {
-                        text: qsTr("Für den Relay-Modus muss gpiosetup die gewünschte Relay-Funktion bereits bereitstellen. Der D+ Simulator übernimmt nur die Einstellung des konfigurierten Kanalnamens.")
-                        wrapMode: Text.WordWrap
-                        show: textValue(outputModeItem, "gpio") === "relay"
-                }
+						MbEditBox {
+							description: qsTr("Zünd-GPIO")
+							item.bind: root.settingsPath("/IgnitionGpio")
+							inputMethodHints: Qt.ImhDigitsOnly
+							maximumLength: 2
+							show: root.useIgnitionItem.valid && root.useIgnitionItem.value
+							writeAccessLevel: User.AccessInstaller
+							onEditDone: {
+								var value = parseInt(newValue, 10)
+								if (!isNaN(value))
+									item.setValue(value)
+							}
+						}
 
-                MbItemText {
-                        text: qsTr("Eingänge")
-                        font.pixelSize: 20
-                        font.bold: true
-                }
+						MbItemOptions {
+							description: qsTr("Zünd-Pull-Konfiguration")
+							bind: root.settingsPath("/IgnitionPull")
+							possibleValues: [
+								MbOption { description: qsTr("Floating"); value: "none" },
+								MbOption { description: qsTr("Pull-down"); value: "down" },
+								MbOption { description: qsTr("Pull-up"); value: "up" }
+							]
+							show: root.useIgnitionItem.valid && root.useIgnitionItem.value
+							writeAccessLevel: User.AccessInstaller
+						}
 
-                MbSwitch {
-                        id: useIgnitionSwitch
-                        name: qsTr("Zündsignal verwenden")
-                        bind: settingsPath("/UseIgnition")
-                        valueTrue: 1
-                        valueFalse: 0
-                        writeAccessLevel: User.AccessInstaller
-                }
+						MbItemOptions {
+							description: qsTr("D-Bus")
+							bind: root.settingsPath("/DbusBus")
+							possibleValues: [
+								MbOption { description: qsTr("System"); value: "system" },
+								MbOption { description: qsTr("Session"); value: "session" }
+							]
+							writeAccessLevel: User.AccessInstaller
+						}
 
-                MbEditBox {
-                        description: qsTr("Zünd-GPIO")
-                        item.bind: settingsPath("/IgnitionGpio")
-                        inputMethodHints: Qt.ImhDigitsOnly
-                        maximumLength: 2
-                        show: useIgnitionItem.valid && useIgnitionItem.value
-                        writeAccessLevel: User.AccessInstaller
-                        onEditDone: {
-                                var value = parseInt(newValue, 10)
-                                if (!isNaN(value))
-                                        item.setValue(value)
-                        }
-                }
+						MbItemText {
+							text: qsTr("Erkannter Dienst: %1").arg(root.textValue(root.servicePathStatusItem, qsTr("noch nicht erkannt")))
+							wrapMode: Text.WordWrap
+						}
 
-                MbItemOptions {
-                        description: qsTr("Zünd-Pull-Konfiguration")
-                        bind: settingsPath("/IgnitionPull")
-                        possibleValues: [
-                                MbOption { description: qsTr("Floating"); value: "none" },
-                                MbOption { description: qsTr("Pull-down"); value: "down" },
-                                MbOption { description: qsTr("Pull-up"); value: "up" }
-                        ]
-                        show: useIgnitionItem.valid && useIgnitionItem.value
-                        writeAccessLevel: User.AccessInstaller
-                }
+						MbItemText {
+							text: qsTr("Spannungspfad: %1").arg(root.textValue(root.voltagePathStatusItem, "/StarterVoltage"))
+							wrapMode: Text.WordWrap
+						}
 
-                MbItemOptions {
-                        description: qsTr("D-Bus")
-                        bind: settingsPath("/DbusBus")
-                        possibleValues: [
-                                MbOption { description: qsTr("System"); value: "system" },
-                                MbOption { description: qsTr("Session"); value: "session" }
-                        ]
-                        writeAccessLevel: User.AccessInstaller
-                }
+						MbItemText {
+							text: qsTr("Aktiver D-Bus: %1").arg(root.textValue(root.dbusBusStatusItem, "system"))
+							wrapMode: Text.WordWrap
+						}
+					}
+				}
+			}
+		}
 
-                MbItemText {
-                        text: qsTr("Die Spannungsquelle wird vom Dienst automatisch erkannt. ServicePath und VoltagePath werden vom Dienst gesetzt und sind im GUI nur zur Kontrolle sichtbar.")
-                        wrapMode: Text.WordWrap
-                }
+		MbSubMenu {
+			description: qsTr("Schaltschwellen")
+			subpage: Component {
+				MbPage {
+					title: qsTr("Schaltschwellen")
+					model: VisibleItemModel {
+						MbEditBox {
+							description: qsTr("Zielspannung [V]")
+							item.bind: root.settingsPath("/TargetVoltage")
+							inputMethodHints: Qt.ImhFormattedNumbersOnly
+							maximumLength: 6
+							writeAccessLevel: User.AccessInstaller
+							onEditDone: {
+								var value = root.numericValue(newValue)
+								if (value !== undefined)
+									item.setValue(value)
+							}
+						}
 
-                MbItemText {
-                        text: qsTr("Erkannter Dienst: %1").arg(textValue(servicePathStatusItem, qsTr("noch nicht erkannt")))
-                        wrapMode: Text.WordWrap
-                }
+						MbEditBox {
+							description: qsTr("Hysterese [V]")
+							item.bind: root.settingsPath("/Hysteresis")
+							inputMethodHints: Qt.ImhFormattedNumbersOnly
+							maximumLength: 5
+							writeAccessLevel: User.AccessInstaller
+							onEditDone: {
+								var value = root.numericValue(newValue)
+								if (value !== undefined)
+									item.setValue(value)
+							}
+						}
 
-                MbItemText {
-                        text: qsTr("Spannungspfad: %1").arg(textValue(voltagePathStatusItem, "/StarterVoltage"))
-                        wrapMode: Text.WordWrap
-                }
+						MbEditBox {
+							description: qsTr("Einschaltspannung [V]")
+							item.bind: root.settingsPath("/OnVoltage")
+							inputMethodHints: Qt.ImhFormattedNumbersOnly
+							maximumLength: 5
+							writeAccessLevel: User.AccessInstaller
+							onEditDone: {
+								var value = root.numericValue(newValue)
+								if (value !== undefined)
+									item.setValue(value)
+							}
+						}
 
-                MbItemText {
-                        text: qsTr("Aktiver D-Bus: %1").arg(textValue(dbusBusStatusItem, "system"))
-                        wrapMode: Text.WordWrap
-                }
+						MbEditBox {
+							description: qsTr("Ausschaltspannung [V]")
+							item.bind: root.settingsPath("/OffVoltage")
+							inputMethodHints: Qt.ImhFormattedNumbersOnly
+							maximumLength: 5
+							writeAccessLevel: User.AccessInstaller
+							onEditDone: {
+								var value = root.numericValue(newValue)
+								if (value !== undefined)
+									item.setValue(value)
+							}
+						}
+					}
+				}
+			}
+		}
 
-                MbItemText {
-                        text: qsTr("Schaltschwellen")
-                        font.pixelSize: 20
-                        font.bold: true
-                }
+		MbSubMenu {
+			description: qsTr("Verzögerungen")
+			subpage: Component {
+				MbPage {
+					title: qsTr("Verzögerungen")
+					model: VisibleItemModel {
+						MbEditBox {
+							description: qsTr("Aktivierungsverzögerung [s]")
+							item.bind: root.settingsPath("/ActivationDelaySeconds")
+							inputMethodHints: Qt.ImhFormattedNumbersOnly
+							maximumLength: 6
+							writeAccessLevel: User.AccessInstaller
+							onEditDone: {
+								var value = root.positiveDelayValue(newValue)
+								if (value !== undefined)
+									item.setValue(value)
+							}
+						}
 
-                MbEditBox {
-                        description: qsTr("Zielspannung [V]")
-                        item.bind: settingsPath("/TargetVoltage")
-                        inputMethodHints: Qt.ImhFormattedNumbersOnly
-                        maximumLength: 6
-                        writeAccessLevel: User.AccessInstaller
-                        onEditDone: {
-                                var value = numericValue(newValue)
-                                if (value !== undefined)
-                                        item.setValue(value)
-                        }
-                }
+						MbEditBox {
+							description: qsTr("Deaktivierungsverzögerung [s]")
+							item.bind: root.settingsPath("/DeactivationDelaySeconds")
+							inputMethodHints: Qt.ImhFormattedNumbersOnly
+							maximumLength: 6
+							writeAccessLevel: User.AccessInstaller
+							onEditDone: {
+								var value = root.positiveDelayValue(newValue)
+								if (value !== undefined)
+									item.setValue(value)
+							}
+						}
 
-                MbEditBox {
-                        description: qsTr("Hysterese [V]")
-                        item.bind: settingsPath("/Hysteresis")
-                        inputMethodHints: Qt.ImhFormattedNumbersOnly
-                        maximumLength: 5
-                        writeAccessLevel: User.AccessInstaller
-                        onEditDone: {
-                                var value = numericValue(newValue)
-                                if (value !== undefined)
-                                        item.setValue(value)
-                        }
-                }
+						MbEditBox {
+							description: qsTr("Einschaltverzögerung [s]")
+							item.bind: root.settingsPath("/OnDelaySec")
+							inputMethodHints: Qt.ImhFormattedNumbersOnly
+							maximumLength: 6
+							writeAccessLevel: User.AccessInstaller
+							onEditDone: {
+								var value = root.positiveDelayValue(newValue)
+								if (value !== undefined)
+									item.setValue(value)
+							}
+						}
 
-                MbEditBox {
-                        description: qsTr("Einschaltspannung [V]")
-                        item.bind: settingsPath("/OnVoltage")
-                        inputMethodHints: Qt.ImhFormattedNumbersOnly
-                        maximumLength: 5
-                        writeAccessLevel: User.AccessInstaller
-                        onEditDone: {
-                                var value = numericValue(newValue)
-                                if (value !== undefined)
-                                        item.setValue(value)
-                        }
-                }
+						MbEditBox {
+							description: qsTr("Ausschaltverzögerung [s]")
+							item.bind: root.settingsPath("/OffDelaySec")
+							inputMethodHints: Qt.ImhFormattedNumbersOnly
+							maximumLength: 6
+							writeAccessLevel: User.AccessInstaller
+							onEditDone: {
+								var value = root.positiveDelayValue(newValue)
+								if (value !== undefined)
+									item.setValue(value)
+							}
+						}
 
-                MbEditBox {
-                        description: qsTr("Ausschaltspannung [V]")
-                        item.bind: settingsPath("/OffVoltage")
-                        inputMethodHints: Qt.ImhFormattedNumbersOnly
-                        maximumLength: 5
-                        writeAccessLevel: User.AccessInstaller
-                        onEditDone: {
-                                var value = numericValue(newValue)
-                                if (value !== undefined)
-                                        item.setValue(value)
-                        }
-                }
+						MbEditBox {
+							description: qsTr("Statusintervall [s]")
+							item.bind: root.settingsPath("/StatusPublishInterval")
+							inputMethodHints: Qt.ImhFormattedNumbersOnly
+							maximumLength: 6
+							writeAccessLevel: User.AccessInstaller
+							onEditDone: {
+								var value = root.positiveDelayValue(newValue)
+								if (value !== undefined)
+									item.setValue(value)
+							}
+						}
+					}
+				}
+			}
+		}
 
-                MbItemText {
-                        text: qsTr("Verzögerungen")
-                        font.pixelSize: 20
-                        font.bold: true
-                }
+		MbSubMenu {
+			description: qsTr("Manuelle Steuerung")
+			subpage: Component {
+				MbPage {
+					title: qsTr("Manuelle Steuerung")
+					model: VisibleItemModel {
+						MbSwitch {
+							name: qsTr("Erzwungen EIN")
+							bind: root.settingsPath("/ForceOn")
+							valueTrue: 1
+							valueFalse: 0
+							writeAccessLevel: User.AccessInstaller
+						}
 
-                MbEditBox {
-                        description: qsTr("Aktivierungsverzögerung [s]")
-                        item.bind: settingsPath("/ActivationDelaySeconds")
-                        inputMethodHints: Qt.ImhFormattedNumbersOnly
-                        maximumLength: 6
-                        writeAccessLevel: User.AccessInstaller
-                        onEditDone: {
-                                var value = positiveDelayValue(newValue)
-                                if (value !== undefined)
-                                        item.setValue(value)
-                        }
-                }
-
-                MbEditBox {
-                        description: qsTr("Deaktivierungsverzögerung [s]")
-                        item.bind: settingsPath("/DeactivationDelaySeconds")
-                        inputMethodHints: Qt.ImhFormattedNumbersOnly
-                        maximumLength: 6
-                        writeAccessLevel: User.AccessInstaller
-                        onEditDone: {
-                                var value = positiveDelayValue(newValue)
-                                if (value !== undefined)
-                                        item.setValue(value)
-                        }
-                }
-
-                MbEditBox {
-                        description: qsTr("Einschaltverzögerung [s]")
-                        item.bind: settingsPath("/OnDelaySec")
-                        inputMethodHints: Qt.ImhFormattedNumbersOnly
-                        maximumLength: 6
-                        writeAccessLevel: User.AccessInstaller
-                        onEditDone: {
-                                var value = positiveDelayValue(newValue)
-                                if (value !== undefined)
-                                        item.setValue(value)
-                        }
-                }
-
-                MbEditBox {
-                        description: qsTr("Ausschaltverzögerung [s]")
-                        item.bind: settingsPath("/OffDelaySec")
-                        inputMethodHints: Qt.ImhFormattedNumbersOnly
-                        maximumLength: 6
-                        writeAccessLevel: User.AccessInstaller
-                        onEditDone: {
-                                var value = positiveDelayValue(newValue)
-                                if (value !== undefined)
-                                        item.setValue(value)
-                        }
-                }
-
-                MbItemText {
-                        text: qsTr("Manuelle Steuerung")
-                        font.pixelSize: 20
-                        font.bold: true
-                }
-
-                MbSwitch {
-                        name: qsTr("Erzwungen EIN")
-                        bind: settingsPath("/ForceOn")
-                        valueTrue: 1
-                        valueFalse: 0
-                        writeAccessLevel: User.AccessInstaller
-                }
-
-                MbSwitch {
-                        name: qsTr("Erzwungen AUS")
-                        bind: settingsPath("/ForceOff")
-                        valueTrue: 1
-                        valueFalse: 0
-                        writeAccessLevel: User.AccessInstaller
-                }
-
-                MbItemText {
-                        text: qsTr("Dienstintegration")
-                        font.pixelSize: 20
-                        font.bold: true
-                }
-
-                MbEditBox {
-                        description: qsTr("Statusintervall [s]")
-                        item.bind: settingsPath("/StatusPublishInterval")
-                        inputMethodHints: Qt.ImhFormattedNumbersOnly
-                        maximumLength: 6
-                        writeAccessLevel: User.AccessInstaller
-                        onEditDone: {
-                                var value = positiveDelayValue(newValue)
-                                if (value !== undefined)
-                                        item.setValue(value)
-                        }
-                }
-        }
+						MbSwitch {
+							name: qsTr("Erzwungen AUS")
+							bind: root.settingsPath("/ForceOff")
+							valueTrue: 1
+							valueFalse: 0
+							writeAccessLevel: User.AccessInstaller
+						}
+					}
+				}
+			}
+		}
+	}
 }

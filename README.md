@@ -32,6 +32,7 @@ Die QML-Seite ist bewusst konservativ aufgebaut und nutzt nur Venus-kompatible G
 - `VBusItem`
 
 Es werden keine dynamischen `QtDBus`-/`Qt.createQmlObject`-Konstrukte verwendet.
+Die Seite ist in einfache Untermenüs aufgeteilt, damit sie auf älteren Venus-GUI-Ständen robuster bleibt.
 
 ## Wichtige Settings
 
