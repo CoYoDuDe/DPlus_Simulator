@@ -1,4 +1,4 @@
-import QtQuick 1.1
+import QtQuick 2
 import com.victron.velib 1.0
 import net.connman 0.1
 import "utils.js" as Utils
@@ -7,7 +7,7 @@ MbPage {
 	title: qsTr("Settings")
 	property string bindPrefix: "com.victronenergy.settings"
 	property VBusItem relay0Item: VBusItem {bind: "com.victronenergy.system/Relay/0/State"}
-	property bool hasRelay0: relay0Item.valid
+	property bool hasRelay0: relay0Item.seen
 
 	model: VisibleItemModel {
 		MbSubMenu {

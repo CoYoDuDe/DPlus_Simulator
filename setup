@@ -844,20 +844,13 @@ source_helper_resources() {
       return
     fi
 
-    if [ -d "${__dplus_source_helper_candidate}" ]; then
-      remember_setup_helper_root "${__dplus_source_helper_candidate}"
-      if [ -r "${__dplus_source_helper_candidate}/forSetupScript" ]; then
-        remember_setup_helper_root "${__dplus_source_helper_candidate}/forSetupScript"
-        # shellcheck disable=SC1090
-        . "${__dplus_source_helper_candidate}/forSetupScript"
-        return
-      fi
-
-      if [ -r "${__dplus_source_helper_candidate}/IncludeHelpers" ]; then
-        remember_setup_helper_root "${__dplus_source_helper_candidate}/IncludeHelpers"
-        # shellcheck disable=SC1090
-        . "${__dplus_source_helper_candidate}/IncludeHelpers"
-        return
+	    if [ -d "${__dplus_source_helper_candidate}" ]; then
+	      remember_setup_helper_root "${__dplus_source_helper_candidate}"
+	      if [ -r "${__dplus_source_helper_candidate}/IncludeHelpers" ]; then
+	        remember_setup_helper_root "${__dplus_source_helper_candidate}/IncludeHelpers"
+	        # shellcheck disable=SC1090
+	        . "${__dplus_source_helper_candidate}/IncludeHelpers"
+	        return
       fi
 
       __dplus_source_helper_missing=0
