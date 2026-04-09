@@ -962,7 +962,8 @@ sync_dbus_settings_list() {
     cp -f "${__dplus_sync_settings_target}" "${DBUS_SETTINGS_PERSISTENT_BACKUP}"
   fi
 
-  install -m 644 "${__dplus_sync_settings_source}" "${__dplus_sync_settings_target}"
+  cp -f "${__dplus_sync_settings_source}" "${__dplus_sync_settings_target}"
+  chmod 644 "${__dplus_sync_settings_target}"
   DBUS_SETTINGS_PERSISTENT_UPDATED=true
 }
 
