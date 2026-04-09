@@ -60,7 +60,7 @@ MbPage {
                 MbItemOptions {
                         id: outputModeOptions
                         description: qsTr("Ausgangsmodus")
-                        item: outputModeItem
+                        bind: settingsPath("/OutputMode")
                         possibleValues: [
                                 MbOption { description: qsTr("GPIO-Pin"); value: "gpio" },
                                 MbOption { description: qsTr("Relay"); value: "relay" }
@@ -106,7 +106,7 @@ MbPage {
                 MbSwitch {
                         id: useIgnitionSwitch
                         name: qsTr("Zündsignal verwenden")
-                        item: useIgnitionItem
+                        bind: settingsPath("/UseIgnition")
                         valueTrue: 1
                         valueFalse: 0
                         writeAccessLevel: User.AccessInstaller
