@@ -1,5 +1,5 @@
 #!/bin/bash
-set -eu
+set -e
 IFS="$(printf ' \t\n')"
 
 SCRIPT_PATH="$0"
