@@ -1,7 +1,7 @@
 //// D+ simulator settings page
 
-import QtQuick 1.1
-import "PageSettingsDPlusSimulatorUtils.js" as DPlusUtils
+import QtQuick 2
+import "utils.js" as Utils
 import com.victron.velib 1.0
 
 MbPage {
@@ -17,7 +17,7 @@ MbPage {
         property VBusItem voltagePathStatusItem: VBusItem { bind: settingsPath("/VoltagePath") }
 
         function settingsPath(suffix) {
-                return DPlusUtils.path(settingsPrefix, suffix)
+                return Utils.path(settingsPrefix, suffix)
         }
 
         function textValue(item, fallback) {
