@@ -3,8 +3,8 @@
 ## Unveröffentlicht
 
 ### Hinzugefügt
-- Preflight-Prüfung im Installer stellt sicher, dass SetupHelper ab Version 8.10, `python3` und das
-  Python-Modul `dbus-next` vorhanden sind, bevor die Installation startet.
+- Preflight-Prüfung im Installer stellt sicher, dass SetupHelper ab Version 8.10 und `python3`
+  vorhanden sind.
 - FileSets-Dateilisten (`fileListVersionIndependent`, `fileListPatched`) beschreiben die Zielpfade für die
   QML-Oberfläche; das Setup-Skript triggert `checkFileSets`/`updateFileSets`, damit SetupHelper die GUI-Dateien
   und Patches verteilt.
@@ -15,7 +15,9 @@
 - Die QML-Einstellungsseite verwendet jetzt ausschließlich konservative GUI-v1-Elemente (`Mb*`, `VBusItem`) ohne `QtDBus`, `Qt.createQmlObject` oder andere dynamische Laufzeit-Konstrukte. Die automatische Erkennung von `ServicePath`/`VoltagePath` verbleibt vollständig im Python-Dienst.
 - `packageDependencies` bleibt leer, weil der `kwindrem`-SetupHelper dort nur Paketkonflikte
   zwischen SetupHelper-Add-ons auswertet; die zum Betrieb der D-Bus-Kommunikation benötigte
-  Python-Bibliothek `dbus-next` prüft der Installer selbst.
+  Python-Bibliothek prüft der Installer selbst.
+- Das Service-Run-Skript ergänzt nun auf Venus OS den bekannten `velib_python`-Pfad, damit der
+  vorhandene `dbus-python`-/`SettingsDevice`-/`vedbus`-Stack direkt genutzt wird.
 - Der Installer ruft – sofern verfügbar – die offizielle `checkPackageDependencies`-Funktion des
   SetupHelper auf und protokolliert andernfalls lediglich das Überspringen der Prüfung, damit auch
   Installationen mit unveränderten Helper-Skripten störungsfrei durchlaufen.

@@ -25,4 +25,24 @@ else
 fi
 
 export PYTHONUNBUFFERED=1
+VELIB_PYTHON_PATH=""
+for candidate in \
+    /opt/victronenergy/dbus-systemcalc-py/ext/velib_python \
+    /data/SetupHelper/velib_python \
+    /data/SetupHelper/velib_python/latest
+do
+    if [ -d "${candidate}" ]; then
+        VELIB_PYTHON_PATH="${candidate}"
+        break
+    fi
+done
+
+if [ -n "${VELIB_PYTHON_PATH}" ]; then
+    if [ -n "${PYTHONPATH:-}" ]; then
+        export PYTHONPATH="${VELIB_PYTHON_PATH}:${PYTHONPATH}"
+    else
+        export PYTHONPATH="${VELIB_PYTHON_PATH}"
+    fi
+fi
+
 exec python3 "${PROJECT_ROOT}/src/dplus_sim.py" "$@"

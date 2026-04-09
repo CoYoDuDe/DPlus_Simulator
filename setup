@@ -1170,9 +1170,6 @@ perform_install() {
   begin_helper_session
   register_package_dependencies
 
-  require_python_module "dbus_next"
-  log INFO "Python-Modul dbus_next ist verfügbar"
-
   filesUpdated=true
   servicesUpdated=true
 

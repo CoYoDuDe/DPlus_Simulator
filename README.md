@@ -6,7 +6,6 @@ D+ Simulator ist ein SetupHelper-Paket fuer Venus OS. Es installiert einen Diens
 
 - `SetupHelper` aktuell installiert
 - `python3` verfuegbar
-- Python-Modul `dbus-next` verfuegbar
 - Fuer `OutputMode=relay`: `gpiosetup` und `guimods`
 
 ## Installation
@@ -62,3 +61,4 @@ Es werden keine dynamischen `QtDBus`-/`Qt.createQmlObject`-Konstrukte verwendet.
 - Der Dienst erwartet eine gueltige Starterspannungsquelle auf dem gewaehlten D-Bus.
 - Ohne gueltige `/StarterVoltage`-Quelle startet der Simulator nicht produktiv.
 - Im Relay-Modus uebernimmt der Dienst die Funktionszuweisung und Ruecksicherung des konfigurierten Relais.
+- Der Dienst nutzt auf Venus OS den vorhandenen `dbus-python`-/`velib_python`-Stack; das Service-Run-Skript ergänzt dafuer bei Bedarf den bekannten `velib_python`-Pfad.
