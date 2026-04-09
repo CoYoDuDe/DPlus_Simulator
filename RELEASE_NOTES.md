@@ -12,9 +12,9 @@
   Artefakte in einem temporären Zielverzeichnis landen.
 
 ### Geändert
-- `packageDependencies` führt `pip3|dbus-next` jetzt als verpflichtende SetupHelper-Abhängigkeit,
-  damit die zum Betrieb der D-Bus-Kommunikation benötigte Python-Bibliothek beim Installationslauf
-  automatisch geprüft und – falls erforderlich – nachinstalliert wird.
+- `packageDependencies` bleibt leer, weil der `kwindrem`-SetupHelper dort nur Paketkonflikte
+  zwischen SetupHelper-Add-ons auswertet; die zum Betrieb der D-Bus-Kommunikation benötigte
+  Python-Bibliothek `dbus-next` prüft der Installer selbst.
 - Der Installer ruft – sofern verfügbar – die offizielle `checkPackageDependencies`-Funktion des
   SetupHelper auf und protokolliert andernfalls lediglich das Überspringen der Prüfung, damit auch
   Installationen mit unveränderten Helper-Skripten störungsfrei durchlaufen.
