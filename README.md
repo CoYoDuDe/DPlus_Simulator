@@ -132,14 +132,12 @@ Die wichtigsten Schlüssel im Gerätekontext `Settings/Devices/DPlusSim` sind:
 > `d` = Double, `b` = Boolesch, `s` = String). Änderungen an den Standardwerten sollten über den
 > Victron Settings-Service erfolgen, damit der Simulator die Werte persistent synchronisieren kann.
 
-Auf GX-Geräten steht auf der Einstellungsseite des D+-Simulators eine Auswahl aller
-gefundenen Dienste mit Starterspannung zur Verfügung. Wird ein Eintrag ausgewählt, setzt
-die Oberfläche `DbusBus`, `ServicePath` und `VoltagePath` automatisch auf die
-Standardwerte des Dienstes. Die Felder werden ausschließlich zur Anzeige genutzt und
-bleiben schreibgeschützt, damit der automatisch ermittelte Pfad nicht überschrieben wird.
-Erkennt das System keinen Dienst mit `/StarterVoltage`, weist die Seite darauf hin, die
-Verkabelung sowie die Konfiguration von System- oder BMV-/SmartShunt-Diensten zu prüfen
-und bei anhaltenden Problemen den Support zu kontaktieren.
+Die GX-Einstellungsseite ist bewusst im konservativen GUI-v1-Stil aufgebaut und verwendet
+nur die auf Venus OS breit verfügbaren `Mb*`-/`VBusItem`-Elemente. `DbusBus` bleibt
+umschaltbar, während `ServicePath` und `VoltagePath` nur als Statusinformation angezeigt
+werden. Die eigentliche Erkennung der Starterspannungsquelle läuft ausschließlich im
+Dienst, damit die GUI keine zusätzlichen `QtDBus`- oder dynamisch erzeugten QML-Objekte
+benötigt.
 
 Alle Werte lassen sich über den DBus-Explorer oder per `dbus-spy` anpassen. Änderungen werden sofort vom Dienst übernommen und – dank `SettingsDevice` – dauerhaft im `com.victronenergy.settings`-Baum hinterlegt.
 
@@ -147,7 +145,7 @@ Der Simulator prüft beim Start zuerst `com.victronenergy.system` auf das Vorhan
 
 ### Abhängigkeiten der Ausgangsmodi
 - **MOSFET-/GPIO-Modus (`OutputMode=gpio`)**: Funktioniert ohne weitere Zusatzpakete, solange der konfigurierte GPIO frei ist.
-- **Relais-Modus (`OutputMode=relay`)**: Setzt voraus, dass die Zusatzpakete `gpiosetup` und `guimods` installiert und aktiv sind. Nur dann steht die Relaisverwaltung über `Settings/Relays/...` zur Verfügung. Sobald kein Relais zugewiesen ist oder gpiosetup nicht verfügbar ist, schaltet der Simulator automatisch auf den MOSFET-/GPIO-Modus zurück.
+- **Relais-Modus (`OutputMode=relay`)**: Setzt voraus, dass die Zusatzpakete `gpiosetup` und `guimods` installiert und aktiv sind. Der gewünschte Kanal wird als `RelayChannel` direkt hinterlegt; die eigentliche Funktionszuweisung und Rücksicherung übernimmt der Dienst. Sobald kein Relais zugewiesen ist oder gpiosetup nicht verfügbar ist, schaltet der Simulator automatisch auf den MOSFET-/GPIO-Modus zurück.
 
 ### Statusinformationen
 Der bereitgestellte DBus-Service `com.coyodude.dplussim` publiziert neben dem bisherigen Status zusätzliche Informationen:
