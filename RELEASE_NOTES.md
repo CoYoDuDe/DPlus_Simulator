@@ -18,6 +18,9 @@
   Python-Bibliothek prüft der Installer selbst.
 - Das Service-Run-Skript ergänzt nun auf Venus OS den bekannten `velib_python`-Pfad, damit der
   vorhandene `dbus-python`-/`SettingsDevice`-/`vedbus`-Stack direkt genutzt wird.
+- Der Installer stößt die Installation der DPlus-GUI-Datei und des `PageSettings.qml`-Patches nun
+  zusätzlich explizit über `updateActiveFile` an, damit die Helper-Ressourcen die QML-Seite auch auf
+  Systemen mit inkonsistenter automatischer FileSet-Erkennung zuverlässig einhängen.
 - Der Installer ruft – sofern verfügbar – die offizielle `checkPackageDependencies`-Funktion des
   SetupHelper auf und protokolliert andernfalls lediglich das Überspringen der Prüfung, damit auch
   Installationen mit unveränderten Helper-Skripten störungsfrei durchlaufen.
