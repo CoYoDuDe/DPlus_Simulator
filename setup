@@ -880,6 +880,11 @@ end_helper_session() {
 }
 
 finalize_helper_session() {
+  if [ "${scriptAction:-}" = "CHECK" ]; then
+    cleanup_dbus_settings_state 0
+    return 0
+  fi
+
   set --
 
   if [ "${filesUpdated}" = true ]; then
