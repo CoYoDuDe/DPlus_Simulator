@@ -19,6 +19,7 @@ Das Paket nutzt den offiziellen SetupHelper-Ablauf:
 - `endScript INSTALL_FILES INSTALL_SERVICES ADD_DBUS_SETTINGS`
 - FileSets fuer GUI-Dateien und Patch
 - `DbusSettingsList` fuer die Settings-Registrierung
+- leere `packageDependencies` werden nicht extra verarbeitet
 
 ## GUI
 

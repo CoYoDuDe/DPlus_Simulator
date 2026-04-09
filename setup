@@ -26,7 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_PATH}")" && pwd -P)"
 PROJECT_ROOT="${SCRIPT_DIR}"
 INSTALL_ROOT="${INSTALL_ROOT:-${PROJECT_ROOT}}"
 SERVICE_NAME="com.coyodude.dplussim"
-DEFAULT_HELPER_INCLUDE="${PROJECT_ROOT}/SetupHelper/HelperResources/IncludeHelpers"
+DEFAULT_HELPER_INCLUDE="/data/SetupHelper/HelperResources/IncludeHelpers"
 HELPER_RESOURCE="${HELPER_RESOURCE:-${DEFAULT_HELPER_INCLUDE}}"
 SETTINGS_BASE_PATH="/Settings/Devices/DPlusSim"
 PACKAGE_DEPENDENCIES_FILE="${PROJECT_ROOT}/packageDependencies"
@@ -1181,6 +1181,27 @@ service_is_up() {
   return 1
 }
 
+package_dependencies_configured() {
+  if [ ! -f "${PACKAGE_DEPENDENCIES_FILE}" ]; then
+    return 1
+  fi
+
+  while IFS= read -r __dplus_package_dependencies_line || [ -n "${__dplus_package_dependencies_line}" ]; do
+    __dplus_package_dependencies_trimmed="$(trim_whitespace "${__dplus_package_dependencies_line}")"
+    if [ -z "${__dplus_package_dependencies_trimmed}" ]; then
+      continue
+    fi
+    case "${__dplus_package_dependencies_trimmed}" in
+      \#*)
+        continue
+        ;;
+    esac
+    return 0
+  done < "${PACKAGE_DEPENDENCIES_FILE}"
+
+  return 1
+}
+
 register_package_dependencies() {
   __dplus_register_pkg_resolved_action="${scriptAction:-}"
 
@@ -1218,8 +1239,8 @@ register_package_dependencies() {
     return
   fi
 
-  if [ ! -f "${PACKAGE_DEPENDENCIES_FILE}" ]; then
-    log WARN "packageDependencies-Datei fehlt, überspringe Registrierung"
+  if ! package_dependencies_configured; then
+    log INFO "Keine packageDependencies konfiguriert; überspringe Prüfung"
     return
   fi
 
