@@ -40,15 +40,9 @@ RESOLVED_CLI_ACTION=""
 filesUpdated=false
 servicesUpdated=false
 dbusSettingsUpdated=false
-_dbus_settings_entries_payload=""
-_dbus_settings_entry_count=0
-_dbus_settings_multiline=""
 DBUS_SETTINGS_FILENAME="DbusSettingsList"
-DBUS_SETTINGS_STAGING_FILE="${PROJECT_ROOT}/${DBUS_SETTINGS_FILENAME}"
 DBUS_SETTINGS_PERSISTENT_FILE="${PROJECT_ROOT}/${DBUS_SETTINGS_FILENAME}"
-DBUS_SETTINGS_STAGING_BACKUP=""
 DBUS_SETTINGS_PERSISTENT_BACKUP=""
-DBUS_SETTINGS_STAGING_CREATED=false
 DBUS_SETTINGS_PERSISTENT_UPDATED=false
 DBUS_SETTINGS_OPERATION=""
 LAST_PACKAGE_DEPENDENCY_CHECK_STATUS=""
@@ -932,126 +926,58 @@ finalize_helper_session() {
   return ${__dplus_finalize_helper_end_status}
 }
 
-build_dbus_settings_entries() {
-  __dplus_build_dbus_list_path="$1"
-  if [ ! -f "${__dplus_build_dbus_list_path}" ]; then
-    die "settingsList ${__dplus_build_dbus_list_path} nicht gefunden"
-  fi
-
-  __dplus_build_dbus_buffer=""
-  __dplus_build_dbus_count=0
-  __dplus_build_dbus_line=""
-
-  while IFS= read -r __dplus_build_dbus_line || [ -n "${__dplus_build_dbus_line}" ]; do
-    __dplus_build_dbus_trimmed="$(trim_whitespace "${__dplus_build_dbus_line}")"
-    if [ -n "${__dplus_build_dbus_trimmed}" ]; then
-      if [ -n "${__dplus_build_dbus_buffer}" ]; then
-        __dplus_build_dbus_buffer="$(printf '%s\n%s' "${__dplus_build_dbus_buffer}" "${__dplus_build_dbus_trimmed}")"
-      else
-        __dplus_build_dbus_buffer="${__dplus_build_dbus_trimmed}"
-      fi
-      __dplus_build_dbus_count=$((__dplus_build_dbus_count + 1))
-    fi
-  done < "${__dplus_build_dbus_list_path}"
-
-  if [ "${__dplus_build_dbus_count}" -gt 0 ]; then
-    _dbus_settings_entries_payload="${__dplus_build_dbus_buffer}"
-    _dbus_settings_entry_count=${__dplus_build_dbus_count}
-    _dbus_settings_multiline="${__dplus_build_dbus_buffer}"
-  else
-    _dbus_settings_entries_payload=""
-    _dbus_settings_entry_count=0
-    _dbus_settings_multiline=""
-  fi
-}
-
-write_dbus_settings_file() {
-  __dplus_write_dbus_output_path="$1"
-
-  if [ "${_dbus_settings_entry_count}" -gt 0 ]; then
-    printf '%s\n' "${_dbus_settings_multiline}" > "${__dplus_write_dbus_output_path}"
-  else
-    : > "${__dplus_write_dbus_output_path}"
-  fi
-}
-
 reset_dbus_settings_tracking() {
   DBUS_SETTINGS_PERSISTENT_FILE="${PROJECT_ROOT}/${DBUS_SETTINGS_FILENAME}"
-  DBUS_SETTINGS_STAGING_BACKUP=""
   DBUS_SETTINGS_PERSISTENT_BACKUP=""
-  DBUS_SETTINGS_STAGING_CREATED=false
   DBUS_SETTINGS_PERSISTENT_UPDATED=false
   DBUS_SETTINGS_OPERATION=""
 }
 
 cleanup_dbus_settings_state() {
   __dplus_cleanup_end_status="${1:-0}"
-  __dplus_cleanup_staging_file="${DBUS_SETTINGS_STAGING_FILE}"
   __dplus_cleanup_persistent_file="${DBUS_SETTINGS_PERSISTENT_FILE:-${PROJECT_ROOT}/${DBUS_SETTINGS_FILENAME}}"
 
   if [ "${__dplus_cleanup_end_status}" -ne 0 ]; then
-    if [ -n "${DBUS_SETTINGS_STAGING_BACKUP}" ] && [ -f "${DBUS_SETTINGS_STAGING_BACKUP}" ]; then
-      mv -f "${DBUS_SETTINGS_STAGING_BACKUP}" "${__dplus_cleanup_staging_file}"
-    elif [ "${DBUS_SETTINGS_STAGING_CREATED}" = true ]; then
-      rm -f "${__dplus_cleanup_staging_file}"
-    fi
-
     if [ -n "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ] && [ -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ]; then
       mv -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" "${__dplus_cleanup_persistent_file}"
     elif [ "${DBUS_SETTINGS_PERSISTENT_UPDATED}" = true ]; then
       rm -f "${__dplus_cleanup_persistent_file}"
     fi
   else
-    if [ -n "${DBUS_SETTINGS_STAGING_BACKUP}" ] && [ -f "${DBUS_SETTINGS_STAGING_BACKUP}" ]; then
-      rm -f "${DBUS_SETTINGS_STAGING_BACKUP}"
-    fi
-
     if [ -n "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ] && [ -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ]; then
       rm -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}"
-    fi
-
-    if [ "${DBUS_SETTINGS_STAGING_CREATED}" = true ]; then
-      rm -f "${__dplus_cleanup_staging_file}"
     fi
   fi
 
   reset_dbus_settings_tracking
 }
 
+sync_dbus_settings_list() {
+  __dplus_sync_settings_source="${PROJECT_ROOT}/settingsList"
+  __dplus_sync_settings_target="${PROJECT_ROOT}/${DBUS_SETTINGS_FILENAME}"
+
+  if [ ! -f "${__dplus_sync_settings_source}" ]; then
+    die "settingsList ${__dplus_sync_settings_source} nicht gefunden"
+  fi
+
+  DBUS_SETTINGS_PERSISTENT_FILE="${__dplus_sync_settings_target}"
+  DBUS_SETTINGS_PERSISTENT_BACKUP=""
+  DBUS_SETTINGS_PERSISTENT_UPDATED=false
+
+  if [ -f "${__dplus_sync_settings_target}" ]; then
+    DBUS_SETTINGS_PERSISTENT_BACKUP="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.persist.backup.XXXXXX")"
+    cp -f "${__dplus_sync_settings_target}" "${DBUS_SETTINGS_PERSISTENT_BACKUP}"
+  fi
+
+  install -m 644 "${__dplus_sync_settings_source}" "${__dplus_sync_settings_target}"
+  DBUS_SETTINGS_PERSISTENT_UPDATED=true
+}
+
 register_dbus_settings() {
-  __dplus_register_list_path="${PROJECT_ROOT}/settingsList"
-  __dplus_register_staging_file="${DBUS_SETTINGS_STAGING_FILE}"
-  __dplus_register_persistent_file="${PROJECT_ROOT}/${DBUS_SETTINGS_FILENAME}"
   __dplus_register_success=false
 
   DBUS_SETTINGS_OPERATION="register"
-  DBUS_SETTINGS_PERSISTENT_FILE="${__dplus_register_persistent_file}"
-  DBUS_SETTINGS_STAGING_BACKUP=""
-  DBUS_SETTINGS_PERSISTENT_BACKUP=""
-  DBUS_SETTINGS_STAGING_CREATED=false
-  DBUS_SETTINGS_PERSISTENT_UPDATED=false
-
-  build_dbus_settings_entries "${__dplus_register_list_path}"
-
-  if [ "${_dbus_settings_entry_count}" -eq 0 ]; then
-    die "Es konnten keine D-Bus-Definitionen für die Registrierung generiert werden"
-  fi
-
-  if [ -f "${__dplus_register_staging_file}" ]; then
-    DBUS_SETTINGS_STAGING_BACKUP="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.backup.XXXXXX")"
-    cp -f "${__dplus_register_staging_file}" "${DBUS_SETTINGS_STAGING_BACKUP}"
-  fi
-
-  write_dbus_settings_file "${__dplus_register_staging_file}"
-  DBUS_SETTINGS_STAGING_CREATED=true
-
-  mkdir -p "${PROJECT_ROOT}"
-  if [ -f "${__dplus_register_persistent_file}" ]; then
-    DBUS_SETTINGS_PERSISTENT_BACKUP="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.persist.backup.XXXXXX")"
-    cp -f "${__dplus_register_persistent_file}" "${DBUS_SETTINGS_PERSISTENT_BACKUP}"
-  fi
-  install -m 644 "${__dplus_register_staging_file}" "${__dplus_register_persistent_file}"
-  DBUS_SETTINGS_PERSISTENT_UPDATED=true
+  sync_dbus_settings_list
 
   if command -v -- endScript >/dev/null 2>&1 && [ -z "${__DPLUS_HELPER_FALLBACK_DEFINED:-}" ]; then
     dbusSettingsUpdated=true
@@ -1060,10 +986,6 @@ register_dbus_settings() {
 
   if call_helper_function_if_available addAllDbusSettings; then
     __dplus_register_success=true
-  elif call_helper_function_if_available addAllDbusSettings "${__dplus_register_staging_file}"; then
-    __dplus_register_success=true
-  elif [ -n "${_dbus_settings_multiline}" ] && call_helper_function_if_available addAllDbusSettings "${_dbus_settings_multiline}"; then
-    __dplus_register_success=true
   fi
 
   if [ "${__dplus_register_success}" = true ]; then
@@ -1071,93 +993,25 @@ register_dbus_settings() {
     return
   fi
 
-  if [ -n "${DBUS_SETTINGS_STAGING_BACKUP}" ]; then
-    mv -f "${DBUS_SETTINGS_STAGING_BACKUP}" "${__dplus_register_staging_file}"
-    DBUS_SETTINGS_STAGING_BACKUP=""
-  elif [ "${DBUS_SETTINGS_STAGING_CREATED}" = true ]; then
-    rm -f "${__dplus_register_staging_file}"
-  fi
-
-  if [ -n "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ]; then
-    mv -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" "${__dplus_register_persistent_file}"
-    DBUS_SETTINGS_PERSISTENT_BACKUP=""
-  elif [ "${DBUS_SETTINGS_PERSISTENT_UPDATED}" = true ]; then
-    rm -f "${__dplus_register_persistent_file}"
-  fi
-
   die "SetupHelper stellt keine geeignete Funktion zum Registrieren der Einstellungen bereit"
 }
 
 unregister_dbus_settings() {
-  __dplus_unregister_list_path="${PROJECT_ROOT}/settingsList"
-  __dplus_unregister_staging_file="${DBUS_SETTINGS_STAGING_FILE}"
-  __dplus_unregister_persistent_file="${PROJECT_ROOT}/${DBUS_SETTINGS_FILENAME}"
   __dplus_unregister_success=false
-  __dplus_unregister_payload=""
 
   DBUS_SETTINGS_OPERATION="unregister"
-  DBUS_SETTINGS_PERSISTENT_FILE="${__dplus_unregister_persistent_file}"
-  DBUS_SETTINGS_STAGING_BACKUP=""
-  DBUS_SETTINGS_PERSISTENT_BACKUP=""
-  DBUS_SETTINGS_STAGING_CREATED=false
-  DBUS_SETTINGS_PERSISTENT_UPDATED=false
-
-  build_dbus_settings_entries "${__dplus_unregister_list_path}"
-
-  if [ -f "${__dplus_unregister_staging_file}" ]; then
-    DBUS_SETTINGS_STAGING_BACKUP="$(mktemp "${TMPDIR:-/tmp}/DbusSettingsList.backup.XXXXXX")"
-    cp -f "${__dplus_unregister_staging_file}" "${DBUS_SETTINGS_STAGING_BACKUP}"
-  fi
-
-  if [ "${_dbus_settings_entry_count}" -gt 0 ]; then
-    write_dbus_settings_file "${__dplus_unregister_staging_file}"
-    DBUS_SETTINGS_STAGING_CREATED=true
-  fi
-
-  if [ -f "${__dplus_unregister_staging_file}" ]; then
-    __dplus_unregister_payload="${__dplus_unregister_staging_file}"
-  elif [ -f "${__dplus_unregister_persistent_file}" ]; then
-    __dplus_unregister_payload="${__dplus_unregister_persistent_file}"
-  fi
+  sync_dbus_settings_list
 
   if call_helper_function_if_available removeAllDbusSettings; then
     __dplus_unregister_success=true
-  elif [ -n "${__dplus_unregister_payload}" ] && call_helper_function_if_available removeAllDbusSettings "${__dplus_unregister_payload}"; then
-    __dplus_unregister_success=true
-  elif [ -n "${_dbus_settings_multiline}" ] && call_helper_function_if_available removeAllDbusSettings "${_dbus_settings_multiline}"; then
-    __dplus_unregister_success=true
   elif call_helper_function_if_available removeDbusSettings; then
-    __dplus_unregister_success=true
-  elif [ -n "${__dplus_unregister_payload}" ] && call_helper_function_if_available removeDbusSettings "${__dplus_unregister_payload}"; then
-    __dplus_unregister_success=true
-  elif [ -n "${_dbus_settings_multiline}" ] && call_helper_function_if_available removeDbusSettings "${_dbus_settings_multiline}"; then
-    __dplus_unregister_success=true
-  elif [ -z "${__dplus_unregister_payload}" ] && [ -z "${_dbus_settings_multiline}" ]; then
     __dplus_unregister_success=true
   fi
 
   if [ "${__dplus_unregister_success}" = true ]; then
-    if [ -n "${DBUS_SETTINGS_STAGING_BACKUP}" ]; then
-      rm -f "${DBUS_SETTINGS_STAGING_BACKUP}" "${__dplus_unregister_staging_file}" 2>/dev/null || true
-      DBUS_SETTINGS_STAGING_BACKUP=""
-    fi
-
-    if [ -n "${DBUS_SETTINGS_PERSISTENT_BACKUP}" ]; then
-      rm -f "${DBUS_SETTINGS_PERSISTENT_BACKUP}" "${__dplus_unregister_persistent_file}" 2>/dev/null || true
-      DBUS_SETTINGS_PERSISTENT_BACKUP=""
-    fi
-
-    if [ -n "${__dplus_unregister_payload}" ] || [ -n "${_dbus_settings_multiline}" ]; then
-      dbusSettingsUpdated=true
-    fi
+    rm -f "${PROJECT_ROOT}/${DBUS_SETTINGS_FILENAME}"
+    dbusSettingsUpdated=true
     return
-  fi
-
-  if [ -n "${DBUS_SETTINGS_STAGING_BACKUP}" ]; then
-    mv -f "${DBUS_SETTINGS_STAGING_BACKUP}" "${__dplus_unregister_staging_file}"
-    DBUS_SETTINGS_STAGING_BACKUP=""
-  elif [ "${DBUS_SETTINGS_STAGING_CREATED}" = true ]; then
-    rm -f "${__dplus_unregister_staging_file}"
   fi
 
   die "Deregistrierung der D-Bus-Settings fehlgeschlagen"
