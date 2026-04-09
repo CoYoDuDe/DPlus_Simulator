@@ -30,19 +30,22 @@ Vor dem eigentlichen Installationslauf führt das Setup-Skript eine Preflight-Pr
 
 ### Abschlussaktionen nach Installation und Deinstallation
 
-Nach jedem Installations-, Deinstallations- oder Statuslauf signalisiert das Setup-Skript dem SetupHelper jetzt explizit, welche Komponenten geändert wurden. Sobald Dateien, Dienste oder D-Bus-Settings betroffen sind, ruft das Skript `endScript` mit den Flags `INSTALL_FILES`, `INSTALL_SERVICES` und `ADD_DBUS_SETTINGS` auf. Der SetupHelper übernimmt daraufhin automatisch das Kopieren bzw. Entfernen der Dateien, das Aktualisieren des Dienstes sowie – falls erforderlich – GUI-Neustarts oder Reboot-Aufforderungen gemäß den offiziellen Richtlinien.
+Nach jedem Installations-, Deinstallations- oder Statuslauf signalisiert das Setup-Skript dem SetupHelper jetzt explizit, welche Komponenten geändert wurden. Sobald Dateien, Dienste oder D-Bus-Settings betroffen sind, ruft das Skript `endScript` mit den Flags `INSTALL_FILES`, `INSTALL_SERVICES` und `ADD_DBUS_SETTINGS` auf. Der SetupHelper übernimmt daraufhin automatisch das Installieren bzw. Entfernen der Dateisatz-Einträge, das Aktualisieren des Dienstes sowie – falls erforderlich – GUI-Neustarts oder Reboot-Aufforderungen gemäß den offiziellen Richtlinien.
 
 Wird das Skript ohne SetupHelper ausgeführt (z. B. in lokalen Testumgebungen), kommt ein Fallback zum Einsatz, der die bisherigen Log-Meldungen erzeugt, ohne zusätzliche Neustarts anzustoßen. Dadurch bleiben manuelle Tests und CI-Läufe weiterhin möglich.
+
+Auf Venus OS arbeitet das Paket dabei direkt aus seinem SetupHelper-Paketverzeichnis. Es wird nicht mehr zusätzlich in ein separates Laufzeitverzeichnis kopiert, sondern nutzt die von `SetupHelper` vorgesehenen Mechanismen für FileSets, Services und D-Bus-Settings unmittelbar aus der Paketstruktur heraus.
 
 ### FileSets-basierte GUI-Verteilung
 
 - Die QML-Oberfläche wird jetzt über die SetupHelper-FileSets ausgeliefert. Die Dateien `FileSets/fileListVersionIndependent`
   und `FileSets/fileListPatched` listen die vollständigen Zielpfade auf (`/opt/victronenergy/gui/qml/...`).
-- Das Setup-Skript ruft nach dem Kopieren der Nutzlast automatisch `checkFileSets` und `updateFileSets` auf. Damit verteilt der
-  SetupHelper die Version-Independent-Dateien (`PageSettingsDPlusSimulator.qml`, `utils.js`) sowie den Patch für
-  `PageSettings.qml` auf alle unterstützten Venus-OS-Versionen.
+- Die eigentliche Verteilung übernimmt direkt der SetupHelper über `endScript INSTALL_FILES`. Damit installiert er die
+  Version-Independent-Dateien (`PageSettingsDPlusSimulator.qml`, `utils.js`) sowie den Patch für `PageSettings.qml`
+  auf alle unterstützten Venus-OS-Versionen aus dem Paketverzeichnis heraus.
 - Ohne externe Helper-Ressourcen sorgt der interne Fallback dafür, dass die Dateien in ein lokales Testziel
-  (`$INSTALL_ROOT/filesets-target` bzw. den per `DPLUS_SIMULATOR_FILESETS_TARGET_ROOT` gesetzten Pfad) gespiegelt werden.
+  (`$PROJECT_ROOT/filesets-target` bzw. den per `DPLUS_SIMULATOR_FILESETS_TARGET_ROOT` gesetzten Pfad) gespiegelt werden.
+  Der Dienst selbst wird dabei lokal nur als Link-Ziel in der Fallback-Helper-Umgebung markiert, während auf Venus OS die echte Installation über `INSTALL_SERVICES` durch den SetupHelper erfolgt.
 - Der Patch orientiert sich an der aktuellen GUI-v1-Struktur von Venus OS 3.x. Sollte eine spätere Firmware eine inkompatible
   `PageSettings.qml` bereitstellen, markiert SetupHelper das FileSet automatisch als `INCOMPLETE` und bricht die Installation
   gemäß offiziellen Richtlinien ab.
@@ -84,11 +87,10 @@ Fehlercode zuverlässig gestoppt.
   `removeAllDbusSettings` und `removeDbusSettings`. Sobald externe Helper-Ressourcen nicht verfügbar
   sind, aktiviert das Setup-Skript automatisch den integrierten Fallback mit identischen
   Schnittstellen.
-- Die D-Bus-Definitionen werden zur Laufzeit aus `settingsList` generiert, bis zum Abschluss von
-  `finalize_helper_session` in der Projektwurzel unter `DbusSettingsList` vorgehalten und parallel
-  in das Installationsverzeichnis kopiert. Dadurch kann `endScript` den Inhalt direkt über das
-  Flag `ADD_DBUS_SETTINGS` einlesen, während eine persistente Kopie für spätere SetupHelper-
-  Reinstallationen bestehen bleibt.
+- Die D-Bus-Definitionen werden zur Laufzeit aus `settingsList` generiert und bis zum Abschluss von
+  `finalize_helper_session` in der Projektwurzel unter `DbusSettingsList` vorgehalten. Dadurch kann
+  `endScript` den Inhalt direkt über das Flag `ADD_DBUS_SETTINGS` einlesen, während die Definition
+  zugleich dort verbleibt, wo sie auch für spätere SetupHelper-Reinstallationen erwartet wird.
 - Der Installer protokolliert weiterhin über `endScript`, ob Dateien, Dienste und D-Bus-Settings
   geändert wurden, sodass GUI-Neustarts oder Reboot-Aufforderungen durch den SetupHelper korrekt
   ausgelöst werden.
@@ -171,7 +173,7 @@ Damit lassen sich die Entscheidungen des Reglers transparent nachverfolgen.
 ## Betrieb und Log-Beobachtung
 - Aktivieren Sie die Simulation über den entsprechenden DBus-Schlüssel oder die GX-Geräteoberfläche.
 - Beobachten Sie das PackageManager-Log (`/var/log/PackageManager.log`), um Installations- und Update-Ereignisse zu verfolgen.
-- Zusätzliche Laufzeitinformationen werden über das Python-Logging der Anwendung (`setup_logging` in `src/dplus_sim.py`) auf den Standardausgang geschrieben. Das zugehörige Log-Skript (`services/com.coyodude.dplussim/log/run`) leitet diese Ausgaben auf Zielsystemen wahlweise an den SetupHelper-Logpipe (`/data/SetupHelper/HelperResources/serviceLogPipe`) weiter oder – falls dieser nicht verfügbar ist – per `svlogd -tt` in das runit-Logverzeichnis des Dienstes (z. B. `/var/log/com.coyodude.dplussim/`). Verwenden Sie daher den SetupHelper-Logviewer bzw. lesen Sie die `current`-Datei im runit-Logordner, um Laufzeitereignisse nachzuverfolgen.
+- Zusätzliche Laufzeitinformationen werden über das Python-Logging der Anwendung (`setup_logging` in `src/dplus_sim.py`) auf den Standardausgang geschrieben. Der Dienststarter unter [services/com.coyodude.dplussim/run](/root/womopi-audit/DPlus_Simulator/services/com.coyodude.dplussim/run) startet das Python-Programm direkt aus dem Paketverzeichnis. Beobachten Sie die Ausgabe daher wie bei anderen runit-Diensten über die jeweilige Dienst-Logkette bzw. über die von SetupHelper bereitgestellten Logansichten auf dem Zielsystem.
 
 ## Debug-Modus und Simulationstools
 - Manuelle Spannungsinjektionen und die Sinus-Simulation sind ausschließlich für Entwicklungsszenarien vorgesehen. Setzen Sie hierfür die Umgebungsvariable `DPLUS_SIM_DEV_MODE=1` und starten Sie den Dienst zusätzlich mit `--enable-debug`.
@@ -182,7 +184,7 @@ Damit lassen sich die Entscheidungen des Reglers transparent nachverfolgen.
 ## Troubleshooting
 | Problem | Mögliche Ursache | Lösung |
 |---------|------------------|--------|
-| Simulation startet nicht | Paket nicht installiert oder Dienst nicht aktiv | PackageManager-Log prüfen, Dienst neu starten (`svc -t dplus-simulator`) |
+| Simulation startet nicht | Paket nicht installiert oder Dienst nicht aktiv | PackageManager-Log prüfen, Dienst neu starten (`svc -t /service/com.coyodude.dplussim`) |
 | Dienst stoppt sofort nach dem Start | Kein Dienst mit `/StarterVoltage` auf dem gewählten D-Bus gefunden oder Verbindung zur Spannungsquelle instabil | Verkabelung und D-Bus prüfen; sicherstellen, dass System- oder Batteriedienste die Starterspannung liefern, und Dienst erneut starten |
 | Kein Ausgangssignal | Falsche Hardware-Verdrahtung oder fehlender Ausgangstreiber | Verkabelung prüfen, Relais/MOSFET auf Funktion testen |
 | Fehlende DBus-Einträge | Service nicht registriert | Systemlog (`journalctl -u dplus-simulator`) prüfen |
