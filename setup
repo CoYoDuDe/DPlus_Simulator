@@ -36,6 +36,7 @@ SETUP_HELPER_DETECTED_ROOT=""
 SETUP_HELPER_VERSION_RAW=""
 SETUP_HELPER_VERSION_NORMALIZED=""
 RESOLVED_CLI_ACTION=""
+standardPromptAndActions='no'
 
 filesUpdated=false
 servicesUpdated=false
@@ -844,30 +845,12 @@ source_helper_resources() {
       return
     fi
 
-	    if [ -d "${__dplus_source_helper_candidate}" ]; then
-	      remember_setup_helper_root "${__dplus_source_helper_candidate}"
-	      if [ -r "${__dplus_source_helper_candidate}/IncludeHelpers" ]; then
-	        remember_setup_helper_root "${__dplus_source_helper_candidate}/IncludeHelpers"
-	        # shellcheck disable=SC1090
-	        . "${__dplus_source_helper_candidate}/IncludeHelpers"
-	        return
-      fi
-
-      __dplus_source_helper_missing=0
-      for __dplus_source_helper_file in \
-        "${__dplus_source_helper_candidate}/CommonResources" \
-        "${__dplus_source_helper_candidate}/ServiceResources" \
-        "${__dplus_source_helper_candidate}/DbusSettingsResources"; do
-        if [ -r "${__dplus_source_helper_file}" ]; then
-          # shellcheck disable=SC1090
-          . "${__dplus_source_helper_file}"
-        else
-          __dplus_source_helper_missing=1
-          break
-        fi
-      done
-
-      if [ "${__dplus_source_helper_missing}" -eq 0 ]; then
+    if [ -d "${__dplus_source_helper_candidate}" ]; then
+      remember_setup_helper_root "${__dplus_source_helper_candidate}"
+      if [ -r "${__dplus_source_helper_candidate}/IncludeHelpers" ]; then
+        remember_setup_helper_root "${__dplus_source_helper_candidate}/IncludeHelpers"
+        # shellcheck disable=SC1090
+        . "${__dplus_source_helper_candidate}/IncludeHelpers"
         return
       fi
     fi
