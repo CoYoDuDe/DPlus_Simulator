@@ -4,14 +4,12 @@ D+ Simulator ist ein SetupHelper-Paket fuer Venus OS. Es installiert einen Diens
 
 ## Voraussetzungen
 
-- `SetupHelper` von `kwindrem` aktuell installiert
+- [SetupHelper](https://github.com/kwindrem/SetupHelper) von [kwindrem](https://github.com/kwindrem) aktuell installiert
 - `python3` verfuegbar
 - Fuer `OutputMode=relay`: `gpiosetup` und `guimods`
 - Venus OS mit vorhandenem `dbus_fast` sowie `dbus-python`/`velib_python`
 
-Dieses Paket baut auf dem SetupHelper-Projekt von `kwindrem` auf:
-
-- `https://github.com/kwindrem/SetupHelper`
+Dieses Paket baut auf [SetupHelper](https://github.com/kwindrem/SetupHelper) von [kwindrem](https://github.com/kwindrem) auf.
 
 ## Installation
 
