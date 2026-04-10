@@ -6,8 +6,9 @@ D+ Simulator ist ein SetupHelper-Paket fuer Venus OS. Es installiert einen Diens
 
 - [SetupHelper](https://github.com/kwindrem/SetupHelper) von [kwindrem](https://github.com/kwindrem) aktuell installiert
 - `python3` verfuegbar
-- Fuer `OutputMode=relay`: `gpiosetup` und `guimods`
+- Fuer `OutputMode=relay`: `RpiGpioSetup` und `GuiMods`
 - Venus OS mit vorhandenem `dbus_fast` sowie `dbus-python`/`velib_python`
+- Eine verfuegbare Batteriespannung auf dem Victron-D-Bus, z. B. ueber BMV oder SmartShunt
 
 Dieses Paket baut auf [SetupHelper](https://github.com/kwindrem/SetupHelper) von [kwindrem](https://github.com/kwindrem) auf.
 
@@ -54,13 +55,13 @@ Es werden keine dynamischen `QtDBus`-/`Qt.createQmlObject`-Konstrukte verwendet.
 - `ForceOn`
 - `ForceOff`
 - `StatusPublishInterval`
-- `DbusBus`
 
-`ServicePath` und `VoltagePath` werden vom Dienst automatisch gesetzt und im GUI nur angezeigt.
+`ServicePath` und `VoltagePath` werden vom Dienst automatisch gesetzt und nicht manuell im GUI bearbeitet.
 
 ## Hinweise
 
 - Der Dienst erwartet eine gueltige Starterspannungsquelle auf dem gewaehlten D-Bus.
-- Ohne gueltige `/StarterVoltage`-Quelle startet der Simulator nicht produktiv.
+- Ohne gueltige Batteriespannung auf dem Victron-D-Bus startet der Simulator nicht produktiv.
 - Im Relay-Modus uebernimmt der Dienst die Funktionszuweisung und Ruecksicherung des konfigurierten Relais.
 - Der Dienst nutzt auf Venus OS fuer den asynchronen D-Bus-Teil `dbus_fast` und fuer Settings/VeDbus den vorhandenen `dbus-python`-/`velib_python`-Stack.
+- Der Standard ist `OutputMode=relay` mit dem letzten System-Relay-Kanal. Wenn keine passenden Relays ueber `RpiGpioSetup` vorhanden sind, kann im GUI auf `GPIO-Pin` umgestellt werden.

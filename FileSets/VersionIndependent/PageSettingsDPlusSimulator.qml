@@ -9,9 +9,7 @@ MbPage {
 	property string settingsPrefix: "com.victronenergy.settings/Settings/Devices/DPlusSim"
 	property VBusItem outputModeItem: VBusItem { bind: settingsPath("/OutputMode") }
 	property VBusItem useIgnitionItem: VBusItem { bind: settingsPath("/UseIgnition") }
-	property VBusItem dbusBusStatusItem: VBusItem { bind: settingsPath("/DbusBus") }
-	property VBusItem servicePathStatusItem: VBusItem { bind: settingsPath("/ServicePath") }
-	property VBusItem voltagePathStatusItem: VBusItem { bind: settingsPath("/VoltagePath") }
+	property VBusItem batteryVoltageItem: VBusItem { bind: "com.victronenergy.system/Dc/Battery/Voltage" }
 
 	function settingsPath(suffix) {
 		return Utils.path(settingsPrefix, suffix)
@@ -105,16 +103,6 @@ MbPage {
 				MbOption { description: qsTr("Pull-up"); value: "up" }
 			]
 			show: root.useIgnitionItem.valid && root.useIgnitionItem.value
-			writeAccessLevel: User.AccessInstaller
-		}
-
-		MbItemOptions {
-			description: qsTr("D-Bus")
-			bind: root.settingsPath("/DbusBus")
-			possibleValues: [
-				MbOption { description: qsTr("System"); value: "system" },
-				MbOption { description: qsTr("Session"); value: "session" }
-			]
 			writeAccessLevel: User.AccessInstaller
 		}
 
@@ -243,17 +231,7 @@ MbPage {
 		}
 
 		MbItemText {
-			text: qsTr("Erkannter Dienst: %1").arg(root.textValue(root.servicePathStatusItem, qsTr("noch nicht erkannt")))
-			wrapMode: Text.WordWrap
-		}
-
-		MbItemText {
-			text: qsTr("Spannungspfad: %1").arg(root.textValue(root.voltagePathStatusItem, "/StarterVoltage"))
-			wrapMode: Text.WordWrap
-		}
-
-		MbItemText {
-			text: qsTr("Aktiver D-Bus: %1").arg(root.textValue(root.dbusBusStatusItem, "system"))
+			text: qsTr("Aktuelle Batteriespannung: %1 V").arg(root.textValue(root.batteryVoltageItem, "--"))
 			wrapMode: Text.WordWrap
 		}
 	}

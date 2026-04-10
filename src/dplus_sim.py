@@ -93,8 +93,8 @@ except Exception:  # pragma: no-cover - Fallback ohne vedbus
 
 
 DEFAULT_GPIO_PIN = 17
-DEFAULT_TARGET_VOLTAGE = 3.3
-DEFAULT_HYSTERESIS = 0.1
+DEFAULT_TARGET_VOLTAGE = 13.0
+DEFAULT_HYSTERESIS = 0.4
 DEFAULT_ACTIVATION_DELAY_SECONDS = 2.0
 DEFAULT_DEACTIVATION_DELAY_SECONDS = 5.0
 DEFAULT_ON_VOLTAGE = DEFAULT_TARGET_VOLTAGE + DEFAULT_HYSTERESIS / 2.0
@@ -103,8 +103,8 @@ DEFAULT_ON_DELAY_SECONDS = DEFAULT_ACTIVATION_DELAY_SECONDS
 DEFAULT_OFF_DELAY_SECONDS = DEFAULT_DEACTIVATION_DELAY_SECONDS
 DEFAULT_IGNITION_GPIO = 4
 DEFAULT_IGNITION_PULL = "down"
-DEFAULT_OUTPUT_MODE = "gpio"
-DEFAULT_RELAY_CHANNEL = "4brelays/0"
+DEFAULT_OUTPUT_MODE = "relay"
+DEFAULT_RELAY_CHANNEL = "5"
 
 
 RELAY_FUNCTION_TAG = "dplus-simulator"
@@ -339,7 +339,9 @@ VoltageProvider = Callable[[], Awaitable[Optional[float]]]
 
 SYSTEM_SERVICE_NAME = "com.victronenergy.system"
 BATTERY_SERVICE_PREFIX = "com.victronenergy.battery."
-STARTER_VOLTAGE_PATH = "/StarterVoltage"
+SYSTEM_VOLTAGE_PATHS = ("/Dc/Battery/Voltage", "/StarterVoltage")
+BATTERY_VOLTAGE_PATHS = ("/Dc/0/Voltage", "/StarterVoltage")
+STARTER_VOLTAGE_PATH = "/Dc/Battery/Voltage"
 
 
 class VoltageServiceDiscoveryError(RuntimeError):
@@ -425,47 +427,56 @@ async def resolve_starter_voltage_service(bus_choice: str) -> VoltageServiceInfo
         ) from exc
 
     try:
-        try:
-            value = await _read_bus_value(bus, SYSTEM_SERVICE_NAME, STARTER_VOLTAGE_PATH)
-        except Exception as exc:
-            logger.debug(
-                "Systemdienst stellt keine Starterspannung bereit: %s",
-                exc,
-            )
-        else:
-            if value is not None:
-                logger.info(
-                    "Starterspannung über %s gefunden",
-                    SYSTEM_SERVICE_NAME,
+        for system_path in SYSTEM_VOLTAGE_PATHS:
+            try:
+                value = await _read_bus_value(bus, SYSTEM_SERVICE_NAME, system_path)
+            except Exception as exc:
+                logger.debug(
+                    "Systemdienst stellt keine Spannung über %s bereit: %s",
+                    system_path,
+                    exc,
                 )
-                return VoltageServiceInfo(
-                    service_name=SYSTEM_SERVICE_NAME,
-                    object_path=STARTER_VOLTAGE_PATH,
-                    bus_choice=bus_choice_normalized,
-                )
+            else:
+                if value is not None:
+                    logger.info(
+                        "Spannungsquelle über %s%s gefunden",
+                        SYSTEM_SERVICE_NAME,
+                        system_path,
+                    )
+                    return VoltageServiceInfo(
+                        service_name=SYSTEM_SERVICE_NAME,
+                        object_path=system_path,
+                        bus_choice=bus_choice_normalized,
+                    )
 
         names = await _list_dbus_names(bus)
         candidates = [name for name in names if name.startswith(BATTERY_SERVICE_PREFIX)]
         logger.debug("Gefundene Victron-Batteriedienste: %s", ", ".join(candidates))
         for candidate in candidates:
-            try:
-                value = await _read_bus_value(bus, candidate, STARTER_VOLTAGE_PATH)
-            except Exception as exc:
-                logger.debug(
-                    "StarterVoltage bei %s konnte nicht gelesen werden: %s",
-                    candidate,
-                    exc,
+            for candidate_path in BATTERY_VOLTAGE_PATHS:
+                try:
+                    value = await _read_bus_value(bus, candidate, candidate_path)
+                except Exception as exc:
+                    logger.debug(
+                        "Spannung bei %s%s konnte nicht gelesen werden: %s",
+                        candidate,
+                        candidate_path,
+                        exc,
+                    )
+                    continue
+                if value is None:
+                    logger.debug(
+                        "Spannung bei %s%s ist nicht verfügbar",
+                        candidate,
+                        candidate_path,
+                    )
+                    continue
+                logger.info("Spannungsquelle über %s%s gefunden", candidate, candidate_path)
+                return VoltageServiceInfo(
+                    service_name=candidate,
+                    object_path=candidate_path,
+                    bus_choice=bus_choice_normalized,
                 )
-                continue
-            if value is None:
-                logger.debug("StarterVoltage bei %s ist nicht verfügbar", candidate)
-                continue
-            logger.info("Starterspannung über %s gefunden", candidate)
-            return VoltageServiceInfo(
-                service_name=candidate,
-                object_path=STARTER_VOLTAGE_PATH,
-                bus_choice=bus_choice_normalized,
-            )
     finally:
         if bus is not None:
             disconnect = getattr(bus, "disconnect", None)
