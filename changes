@@ -1,13 +1,8 @@
-v0.1.2
-- Manueller Hauptschalter `D+ Simulator aktiv` im GUI ergaenzt.
-
-v0.1.1
-- D-Bus-Settings im echten SetupHelper-Format, damit Defaultwerte und GUI-Bindings sauber angelegt werden.
-- Automatische Spannungsquellenerkennung bevorzugt jetzt die Starterbatterie ueber /Dc/1/Voltage.
-- GUI weiter vereinfacht; "Erzwungen EIN/AUS" aus der Bedienoberflaeche entfernt.
-
 v0.1
 - SetupHelper-first Stand fuer Installation und Uninstallation vereinheitlicht.
 - GUI fuer Venus OS vereinfacht und stabilisiert.
 - Patch- und Menueintegration auf dem Zielsystem bereinigt.
+- D-Bus-Settings im echten SetupHelper-Format angelegt, damit Defaultwerte und GUI-Bindings sauber funktionieren.
+- Automatische Spannungsquellenerkennung auf Starterbatterie-Vorrang ueber /Dc/1/Voltage angepasst.
+- Manueller Hauptschalter `D+ Simulator aktiv` fuer einfache Tests ergaenzt.
 - Paket bleibt vorerst Vorabstand und wird weiter verfeinert.
