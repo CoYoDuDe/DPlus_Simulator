@@ -9,7 +9,17 @@ MbPage {
 	property string settingsPrefix: "com.victronenergy.settings/Settings/Devices/DPlusSim"
 	property VBusItem outputModeItem: VBusItem { bind: settingsPath("/OutputMode") }
 	property VBusItem useIgnitionItem: VBusItem { bind: settingsPath("/UseIgnition") }
-	property VBusItem batteryVoltageItem: VBusItem { bind: "com.victronenergy.system/Dc/Battery/Voltage" }
+	property VBusItem sourceModeItem: VBusItem { bind: settingsPath("/VoltageSourceMode") }
+	property VBusItem servicePathItem: VBusItem { bind: settingsPath("/ServicePath") }
+	property VBusItem voltagePathItem: VBusItem { bind: settingsPath("/VoltagePath") }
+	property string selectedVoltageBind: {
+		var service = textValue(servicePathItem, "")
+		var path = textValue(voltagePathItem, "")
+		if (service.length && path.length)
+			return service + path
+		return ""
+	}
+	property VBusItem currentSourceVoltageItem: VBusItem { bind: root.selectedVoltageBind }
 
 	function settingsPath(suffix) {
 		return Utils.path(settingsPrefix, suffix)
@@ -79,6 +89,32 @@ MbPage {
 			maximumLength: 40
 			overwriteMode: false
 			show: root.textValue(root.outputModeItem, "gpio") === "relay"
+			writeAccessLevel: User.AccessInstaller
+		}
+
+		MbItemOptions {
+			description: qsTr("Spannungsquelle")
+			bind: root.settingsPath("/VoltageSourceMode")
+			possibleValues: [
+				MbOption { description: qsTr("Automatisch"); value: "auto" },
+				MbOption { description: qsTr("Manuell"); value: "manual" }
+			]
+			writeAccessLevel: User.AccessInstaller
+		}
+
+		MbEditBox {
+			description: qsTr("D-Bus-Dienst")
+			item.bind: root.settingsPath("/ServicePath")
+			maximumLength: 64
+			show: root.textValue(root.sourceModeItem, "auto") === "manual"
+			writeAccessLevel: User.AccessInstaller
+		}
+
+		MbEditBox {
+			description: qsTr("Spannungspfad")
+			item.bind: root.settingsPath("/VoltagePath")
+			maximumLength: 64
+			show: root.textValue(root.sourceModeItem, "auto") === "manual"
 			writeAccessLevel: User.AccessInstaller
 		}
 
@@ -240,7 +276,7 @@ MbPage {
 		}
 
 		MbItemText {
-			text: qsTr("Aktuelle Batteriespannung: %1 V").arg(root.voltageText(root.batteryVoltageItem, "--"))
+			text: qsTr("Aktuelle Quellenspannung: %1 V").arg(root.voltageText(root.currentSourceVoltageItem, "--"))
 			wrapMode: Text.WordWrap
 		}
 	}

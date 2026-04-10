@@ -105,6 +105,7 @@ DEFAULT_IGNITION_GPIO = 4
 DEFAULT_IGNITION_PULL = "down"
 DEFAULT_OUTPUT_MODE = "relay"
 DEFAULT_RELAY_CHANNEL = "5"
+DEFAULT_VOLTAGE_SOURCE_MODE = "auto"
 
 
 RELAY_FUNCTION_TAG = "dplus-simulator"
@@ -252,6 +253,14 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "type": "s",
         "default": DEFAULT_OUTPUT_MODE,
         "description": "Steuerungsmodus für den D+-Ausgang (gpio oder relay).",
+        "min": 0,
+        "max": 0,
+    },
+    "voltage_source_mode": {
+        "path": "/Settings/Devices/DPlusSim/VoltageSourceMode",
+        "type": "s",
+        "default": DEFAULT_VOLTAGE_SOURCE_MODE,
+        "description": "Auswahl der Spannungsquelle (auto oder manual).",
         "min": 0,
         "max": 0,
     },
@@ -499,6 +508,13 @@ async def resolve_bmv712_service(bus_choice: str) -> VoltageServiceInfo:
     """Alias für Kompatibilität – verweist auf die Starterspannungs-Erkennung."""
 
     return await resolve_starter_voltage_service(bus_choice)
+
+
+def normalize_voltage_source_mode(value: Any) -> str:
+    normalized = str(value or DEFAULT_VOLTAGE_SOURCE_MODE).strip().lower()
+    if normalized == "manual":
+        return "manual"
+    return "auto"
 
 
 class VoltageSourceError(RuntimeError):
@@ -3211,6 +3227,9 @@ async def run_async(args: argparse.Namespace) -> None:
         merged_settings["dbus_bus"], _ = resolve_bus_configuration(
             merged_settings.get("dbus_bus", selected_bus)
         )
+    merged_settings["voltage_source_mode"] = normalize_voltage_source_mode(
+        merged_settings.get("voltage_source_mode", DEFAULT_VOLTAGE_SOURCE_MODE)
+    )
 
     resolved_voltage_source: Optional[VoltageServiceInfo] = None
     voltage_constraints: Dict[str, str] = {}
@@ -3263,7 +3282,15 @@ async def run_async(args: argparse.Namespace) -> None:
             relay_function_monitor = None
 
     voltage_reader: Optional[DbusVoltageReader] = None
-    if not startup_failed:
+    async def configure_voltage_source(*, fail_hard: bool) -> bool:
+        nonlocal voltage_reader, startup_failed, resolved_voltage_source, voltage_constraints
+        if voltage_reader is not None:
+            with contextlib.suppress(Exception):
+                await voltage_reader.close()
+            voltage_reader = None
+        resolved_voltage_source = None
+        voltage_constraints = {}
+
         if (
             args.no_dbus
             or BusType is None
@@ -3273,10 +3300,40 @@ async def run_async(args: argparse.Namespace) -> None:
             reason = "D-Bus-Unterstützung nicht verfügbar – der Dienst wird beendet"
             logging.getLogger("DPlusSim").error(reason)
             await mark_voltage_failure(reason)
-            request_shutdown()
-            startup_failed = True
+            if fail_hard:
+                request_shutdown()
+                startup_failed = True
+            return False
+
+        bus_choice = merged_settings.get("dbus_bus", "system")
+        source_mode = normalize_voltage_source_mode(
+            merged_settings.get("voltage_source_mode", DEFAULT_VOLTAGE_SOURCE_MODE)
+        )
+        merged_settings["voltage_source_mode"] = source_mode
+
+        if source_mode == "manual":
+            service_name = str(merged_settings.get("service_path", "")).strip()
+            object_path = str(merged_settings.get("voltage_path", "")).strip()
+            if not service_name or not object_path:
+                reason = "Manuelle Spannungsquelle ist nicht vollständig konfiguriert"
+                logging.getLogger("DPlusSim").error(reason)
+                await mark_voltage_failure(
+                    reason,
+                    state="not-configured",
+                    service=service_name,
+                    path=object_path,
+                    bus_choice=bus_choice,
+                )
+                if fail_hard:
+                    request_shutdown()
+                    startup_failed = True
+                return False
+            resolved_voltage_source = VoltageServiceInfo(
+                service_name=service_name,
+                object_path=object_path,
+                bus_choice=bus_choice,
+            )
         else:
-            bus_choice = merged_settings.get("dbus_bus", "system")
             try:
                 resolved_voltage_source = await resolve_starter_voltage_service(bus_choice)
             except VoltageServiceDiscoveryError as exc:
@@ -3289,60 +3346,66 @@ async def run_async(args: argparse.Namespace) -> None:
                     path=STARTER_VOLTAGE_PATH,
                     bus_choice=bus_choice,
                 )
-                request_shutdown()
-                startup_failed = True
-            else:
-                voltage_constraints = {
-                    "service_path": resolved_voltage_source.service_name,
-                    "voltage_path": resolved_voltage_source.object_path,
-                }
-                merged_settings.update(voltage_constraints)
-                if settings_backend is not None:
-                    try:
-                        await settings_backend.apply(voltage_constraints)
-                    except Exception as exc:
-                        logging.getLogger("DPlusSim").warning(
-                            "Automatische Übernahme der Starterspannungs-Einstellungen fehlgeschlagen: %s",
-                            exc,
-                        )
-                voltage_reader = DbusVoltageReader(
-                    resolved_voltage_source.service_name,
-                    resolved_voltage_source.object_path,
-                    resolved_voltage_source.bus_choice,
-                )
-                try:
-                    await voltage_reader.initialize()
-                except VoltageSourceError as exc:
-                    reason = (
-                        f"Initiale Verbindung zur Spannungsquelle fehlgeschlagen: {exc}"
-                    )
-                    logging.getLogger("DPlusSim").error(reason)
-                    await mark_voltage_failure(
-                        reason,
-                        state="error",
-                        service=resolved_voltage_source.service_name,
-                        path=resolved_voltage_source.object_path,
-                        bus_choice=resolved_voltage_source.bus_choice,
-                    )
+                if fail_hard:
                     request_shutdown()
                     startup_failed = True
-                    voltage_reader = None
-                else:
-                    await controller.set_voltage_provider(
-                        voltage_reader.read_voltage,
-                        voltage_reader.description,
-                        source_info={
-                            **voltage_reader.metadata,
-                            "reader": voltage_reader,
-                            "available": False,
-                            "product_id": resolved_voltage_source.product_id,
-                            "product_name": resolved_voltage_source.product_name,
-                        },
+                return False
+            voltage_constraints = {
+                "service_path": resolved_voltage_source.service_name,
+                "voltage_path": resolved_voltage_source.object_path,
+            }
+            merged_settings.update(voltage_constraints)
+            if settings_backend is not None:
+                try:
+                    await settings_backend.apply(voltage_constraints)
+                except Exception as exc:
+                    logging.getLogger("DPlusSim").warning(
+                        "Automatische Übernahme der Starterspannungs-Einstellungen fehlgeschlagen: %s",
+                        exc,
                     )
-                    logging.getLogger("DPlusSim").info(
-                        "Externe Spannungsquelle aktiviert: %s",
-                        voltage_reader.description,
-                    )
+
+        voltage_reader = DbusVoltageReader(
+            resolved_voltage_source.service_name,
+            resolved_voltage_source.object_path,
+            resolved_voltage_source.bus_choice,
+        )
+        try:
+            await voltage_reader.initialize()
+        except VoltageSourceError as exc:
+            reason = f"Initiale Verbindung zur Spannungsquelle fehlgeschlagen: {exc}"
+            logging.getLogger("DPlusSim").error(reason)
+            await mark_voltage_failure(
+                reason,
+                state="error",
+                service=resolved_voltage_source.service_name,
+                path=resolved_voltage_source.object_path,
+                bus_choice=resolved_voltage_source.bus_choice,
+            )
+            if fail_hard:
+                request_shutdown()
+                startup_failed = True
+            voltage_reader = None
+            return False
+
+        await controller.set_voltage_provider(
+            voltage_reader.read_voltage,
+            voltage_reader.description,
+            source_info={
+                **voltage_reader.metadata,
+                "reader": voltage_reader,
+                "available": False,
+                "product_id": resolved_voltage_source.product_id,
+                "product_name": resolved_voltage_source.product_name,
+            },
+        )
+        logging.getLogger("DPlusSim").info(
+            "Externe Spannungsquelle aktiviert: %s",
+            voltage_reader.description,
+        )
+        return True
+
+    if not startup_failed:
+        await configure_voltage_source(fail_hard=True)
 
 
     async def persist_settings(updates: Dict[str, Any]) -> None:
@@ -3364,13 +3427,24 @@ async def run_async(args: argparse.Namespace) -> None:
         async def handle_setting_update(key: str, value: Any) -> None:
             nonlocal voltage_reader, startup_failed, resolved_voltage_source, voltage_constraints
             if key == "dbus_bus":
-                logging.getLogger("DPlusSim").warning(
-                    "Änderungen am D-Bus-Typ (%s) werden erst nach einem Neustart wirksam",
-                    value,
-                )
+                merged_settings[key] = value
+                await controller.update_settings({key: value})
+                await configure_voltage_source(fail_hard=False)
+                return
+            if key == "voltage_source_mode":
+                merged_settings[key] = normalize_voltage_source_mode(value)
+                if settings_backend is not None:
+                    await settings_backend.apply({key: merged_settings[key]})
+                await configure_voltage_source(fail_hard=False)
                 return
             if key in {"service_path", "voltage_path"}:
+                merged_settings[key] = str(value).strip()
                 expected = voltage_constraints.get(key)
+                if normalize_voltage_source_mode(
+                    merged_settings.get("voltage_source_mode", DEFAULT_VOLTAGE_SOURCE_MODE)
+                ) == "manual":
+                    await configure_voltage_source(fail_hard=False)
+                    return
                 if expected is None and resolved_voltage_source is not None:
                     expected = (
                         resolved_voltage_source.service_name
