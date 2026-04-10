@@ -184,30 +184,6 @@ MbPage {
 		}
 
 		MbEditBox {
-			description: qsTr("Aktivierungsverzögerung [s]")
-			item.bind: root.settingsPath("/ActivationDelaySeconds")
-			maximumLength: 6
-			writeAccessLevel: User.AccessInstaller
-			onEditDone: {
-				var value = root.positiveDelayValue(newValue)
-				if (value !== undefined)
-					item.setValue(value)
-			}
-		}
-
-		MbEditBox {
-			description: qsTr("Deaktivierungsverzögerung [s]")
-			item.bind: root.settingsPath("/DeactivationDelaySeconds")
-			maximumLength: 6
-			writeAccessLevel: User.AccessInstaller
-			onEditDone: {
-				var value = root.positiveDelayValue(newValue)
-				if (value !== undefined)
-					item.setValue(value)
-			}
-		}
-
-		MbEditBox {
 			description: qsTr("Einschaltverzögerung [s]")
 			item.bind: root.settingsPath("/OnDelaySec")
 			maximumLength: 6
@@ -222,18 +198,6 @@ MbPage {
 		MbEditBox {
 			description: qsTr("Ausschaltverzögerung [s]")
 			item.bind: root.settingsPath("/OffDelaySec")
-			maximumLength: 6
-			writeAccessLevel: User.AccessInstaller
-			onEditDone: {
-				var value = root.positiveDelayValue(newValue)
-				if (value !== undefined)
-					item.setValue(value)
-			}
-		}
-
-		MbEditBox {
-			description: qsTr("Statusintervall [s]")
-			item.bind: root.settingsPath("/StatusPublishInterval")
 			maximumLength: 6
 			writeAccessLevel: User.AccessInstaller
 			onEditDone: {
