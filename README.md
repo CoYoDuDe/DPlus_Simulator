@@ -59,6 +59,7 @@ Es werden keine dynamischen `QtDBus`-/`Qt.createQmlObject`-Konstrukte verwendet.
 - Im Relay-Modus uebernimmt der Dienst die Funktionszuweisung und Ruecksicherung des konfigurierten Relais.
 - Der Dienst nutzt auf Venus OS fuer den asynchronen D-Bus-Teil `dbus_fast` und fuer Settings/VeDbus den vorhandenen `dbus-python`-/`velib_python`-Stack.
 - Der Standard ist `OutputMode=relay` mit dem letzten System-Relay-Kanal. Wenn keine passenden Relays ueber `RpiGpioSetup` vorhanden sind, kann im GUI auf `GPIO-Pin` umgestellt werden.
+- Wenn statt des System-Relais das Relay eines BMV-712 genutzt werden soll, muss das BMV-Relay in VictronConnect auf `Remote` gestellt sein. Je nach Firmware/App kann diese Einstellung auch als `MAN` oder manueller Remote-Modus erscheinen. In den anderen Relay-Modi steuert der BMV sein Relay selbst.
 
 ## Empfohlene Startwerte
 
