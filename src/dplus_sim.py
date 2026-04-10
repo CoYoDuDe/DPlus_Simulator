@@ -152,6 +152,14 @@ def normalize_relay_channel(channel: str) -> str:
 
 
 SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
+    "enabled": {
+        "path": "/Settings/Devices/DPlusSim/Enabled",
+        "type": "b",
+        "default": True,
+        "description": "Aktiviert oder deaktiviert den D+-Simulator.",
+        "min": 0,
+        "max": 1,
+    },
     "gpio_pin": {
         "path": "/Settings/Devices/DPlusSim/GpioPin",
         "type": "i",
@@ -2904,19 +2912,22 @@ class DPlusController:
     def _evaluate_locked(self) -> None:
         now = time.monotonic()
         ignition_state = self._ignition_input.read() if self._ignition_input else False
+        simulator_enabled = bool(self._settings.get("enabled", True))
         ignition_required = bool(self._settings.get("use_ignition", False))
         source_available = bool(self._voltage_provider) and self._voltage_source_available
         self._status.voltage_source_available = source_available
         on_dependencies: Dict[str, bool] = {}
         off_dependencies: Dict[str, bool] = {}
+        if not simulator_enabled:
+            off_dependencies["enabled"] = True
         if ignition_required:
             on_dependencies["ignition"] = ignition_state
             off_dependencies["ignition"] = not ignition_state
         on_dependencies["voltage_source"] = source_available
         if not source_available:
             off_dependencies["voltage_source"] = True
-        force_on = bool(self._settings.get("force_on", False))
-        force_off = bool(self._settings.get("force_off", False))
+        force_on = bool(self._settings.get("force_on", False)) and simulator_enabled
+        force_off = bool(self._settings.get("force_off", False)) or not simulator_enabled
         switch_state = self._switch.evaluate(
             self._voltage,
             now,
@@ -2958,7 +2969,7 @@ class DPlusController:
         self._status.ignition_enabled = ignition_required
         self._status.ignition_state = ignition_state
         self._status.ignition_pull_mode = str(self._settings.get("ignition_pull", DEFAULT_IGNITION_PULL))
-        self._status.allow_on = switch_state["on_ready"]
+        self._status.allow_on = simulator_enabled and switch_state["on_ready"]
         self._status.off_required = switch_state["off_required"]
         self._status.conditions_on = dict(switch_state["conditions_on"])
         self._status.conditions_off = dict(switch_state["conditions_off"])

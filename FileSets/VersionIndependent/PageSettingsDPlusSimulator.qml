@@ -60,6 +60,14 @@ MbPage {
 	}
 
 	model: VisibleItemModel {
+		MbSwitch {
+			name: qsTr("D+ Simulator aktiv")
+			bind: root.settingsPath("/Enabled")
+			valueTrue: 1
+			valueFalse: 0
+			writeAccessLevel: User.AccessInstaller
+		}
+
 		MbItemOptions {
 			description: qsTr("Ausgangsmodus")
 			bind: root.settingsPath("/OutputMode")

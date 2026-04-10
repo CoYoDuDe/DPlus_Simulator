@@ -1,3 +1,6 @@
+v0.1.2
+- Manueller Hauptschalter `D+ Simulator aktiv` im GUI ergaenzt.
+
 v0.1.1
 - D-Bus-Settings im echten SetupHelper-Format, damit Defaultwerte und GUI-Bindings sauber angelegt werden.
 - Automatische Spannungsquellenerkennung bevorzugt jetzt die Starterbatterie ueber /Dc/1/Voltage.
