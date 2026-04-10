@@ -67,7 +67,6 @@ MbPage {
 						MbEditBox {
 							description: qsTr("GPIO-Pin")
 							item.bind: root.settingsPath("/GpioPin")
-							inputMethodHints: Qt.ImhDigitsOnly
 							maximumLength: 2
 							show: root.textValue(root.outputModeItem, "gpio") !== "relay"
 							writeAccessLevel: User.AccessInstaller
@@ -114,7 +113,6 @@ MbPage {
 						MbEditBox {
 							description: qsTr("Zünd-GPIO")
 							item.bind: root.settingsPath("/IgnitionGpio")
-							inputMethodHints: Qt.ImhDigitsOnly
 							maximumLength: 2
 							show: root.useIgnitionItem.valid && root.useIgnitionItem.value
 							writeAccessLevel: User.AccessInstaller
@@ -175,7 +173,6 @@ MbPage {
 						MbEditBox {
 							description: qsTr("Zielspannung [V]")
 							item.bind: root.settingsPath("/TargetVoltage")
-							inputMethodHints: Qt.ImhFormattedNumbersOnly
 							maximumLength: 6
 							writeAccessLevel: User.AccessInstaller
 							onEditDone: {
@@ -188,7 +185,6 @@ MbPage {
 						MbEditBox {
 							description: qsTr("Hysterese [V]")
 							item.bind: root.settingsPath("/Hysteresis")
-							inputMethodHints: Qt.ImhFormattedNumbersOnly
 							maximumLength: 5
 							writeAccessLevel: User.AccessInstaller
 							onEditDone: {
@@ -201,7 +197,6 @@ MbPage {
 						MbEditBox {
 							description: qsTr("Einschaltspannung [V]")
 							item.bind: root.settingsPath("/OnVoltage")
-							inputMethodHints: Qt.ImhFormattedNumbersOnly
 							maximumLength: 5
 							writeAccessLevel: User.AccessInstaller
 							onEditDone: {
@@ -214,7 +209,6 @@ MbPage {
 						MbEditBox {
 							description: qsTr("Ausschaltspannung [V]")
 							item.bind: root.settingsPath("/OffVoltage")
-							inputMethodHints: Qt.ImhFormattedNumbersOnly
 							maximumLength: 5
 							writeAccessLevel: User.AccessInstaller
 							onEditDone: {
@@ -237,7 +231,6 @@ MbPage {
 						MbEditBox {
 							description: qsTr("Aktivierungsverzögerung [s]")
 							item.bind: root.settingsPath("/ActivationDelaySeconds")
-							inputMethodHints: Qt.ImhFormattedNumbersOnly
 							maximumLength: 6
 							writeAccessLevel: User.AccessInstaller
 							onEditDone: {
@@ -250,7 +243,6 @@ MbPage {
 						MbEditBox {
 							description: qsTr("Deaktivierungsverzögerung [s]")
 							item.bind: root.settingsPath("/DeactivationDelaySeconds")
-							inputMethodHints: Qt.ImhFormattedNumbersOnly
 							maximumLength: 6
 							writeAccessLevel: User.AccessInstaller
 							onEditDone: {
@@ -263,7 +255,6 @@ MbPage {
 						MbEditBox {
 							description: qsTr("Einschaltverzögerung [s]")
 							item.bind: root.settingsPath("/OnDelaySec")
-							inputMethodHints: Qt.ImhFormattedNumbersOnly
 							maximumLength: 6
 							writeAccessLevel: User.AccessInstaller
 							onEditDone: {
@@ -276,7 +267,6 @@ MbPage {
 						MbEditBox {
 							description: qsTr("Ausschaltverzögerung [s]")
 							item.bind: root.settingsPath("/OffDelaySec")
-							inputMethodHints: Qt.ImhFormattedNumbersOnly
 							maximumLength: 6
 							writeAccessLevel: User.AccessInstaller
 							onEditDone: {
@@ -289,7 +279,6 @@ MbPage {
 						MbEditBox {
 							description: qsTr("Statusintervall [s]")
 							item.bind: root.settingsPath("/StatusPublishInterval")
-							inputMethodHints: Qt.ImhFormattedNumbersOnly
 							maximumLength: 6
 							writeAccessLevel: User.AccessInstaller
 							onEditDone: {

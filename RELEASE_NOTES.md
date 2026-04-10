@@ -12,6 +12,7 @@
   Artefakte in einem temporären Zielverzeichnis landen.
 
 ### Geändert
+- Die DPlus-QML verzichtet jetzt auch auf `inputMethodHints`, weil diese Property auf dem Zielsystem bereits beim `SSHTunnel` zu einem White-Screen geführt hat und in `MbEditBox` nicht zuverlässig verfügbar ist.
 - Der Dienst verwendet auf Venus OS jetzt eindeutig `dbus_fast` als asyncio-D-Bus-Backend. Die frühere Mehrfach-Fallback-Idee zu `dbus_next` wurde verworfen, weil auf dem Zielsystem `dbus_fast` bereits vorhanden ist.
 - Die DPlus-GUI wurde nochmals vereinfacht und in stabile Unterseiten (`Ausgang`, `Eingänge`, `Schaltschwellen`, `Verzögerungen`, `Manuelle Steuerung`) aufgeteilt. Die problematischen Überschriften mit `font.*` sind entfernt.
 - Die QML-Einstellungsseite verwendet jetzt ausschließlich konservative GUI-v1-Elemente (`Mb*`, `VBusItem`) ohne `QtDBus`, `Qt.createQmlObject` oder andere dynamische Laufzeit-Konstrukte. Die automatische Erkennung von `ServicePath`/`VoltagePath` verbleibt vollständig im Python-Dienst.
