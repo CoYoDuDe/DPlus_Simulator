@@ -356,7 +356,8 @@ VoltageProvider = Callable[[], Awaitable[Optional[float]]]
 
 SYSTEM_SERVICE_NAME = "com.victronenergy.system"
 BATTERY_SERVICE_PREFIX = "com.victronenergy.battery."
-SYSTEM_VOLTAGE_PATHS = ("/Dc/Battery/Voltage", "/StarterVoltage")
+SYSTEM_STARTER_VOLTAGE_PATHS = ("/StarterVoltage",)
+SYSTEM_VOLTAGE_FALLBACK_PATHS = ("/Dc/Battery/Voltage",)
 BATTERY_VOLTAGE_PATHS = ("/Dc/1/Voltage", "/Dc/0/Voltage", "/StarterVoltage")
 STARTER_VOLTAGE_PATH = "/Dc/Battery/Voltage"
 
@@ -444,7 +445,7 @@ async def resolve_starter_voltage_service(bus_choice: str) -> VoltageServiceInfo
         ) from exc
 
     try:
-        for system_path in SYSTEM_VOLTAGE_PATHS:
+        for system_path in SYSTEM_STARTER_VOLTAGE_PATHS:
             try:
                 value = await _read_bus_value(bus, SYSTEM_SERVICE_NAME, system_path)
             except Exception as exc:
@@ -494,6 +495,28 @@ async def resolve_starter_voltage_service(bus_choice: str) -> VoltageServiceInfo
                     object_path=candidate_path,
                     bus_choice=bus_choice_normalized,
                 )
+
+        for system_path in SYSTEM_VOLTAGE_FALLBACK_PATHS:
+            try:
+                value = await _read_bus_value(bus, SYSTEM_SERVICE_NAME, system_path)
+            except Exception as exc:
+                logger.debug(
+                    "Systemdienst stellt keine Fallback-Spannung über %s bereit: %s",
+                    system_path,
+                    exc,
+                )
+            else:
+                if value is not None:
+                    logger.info(
+                        "Fallback-Spannungsquelle über %s%s gefunden",
+                        SYSTEM_SERVICE_NAME,
+                        system_path,
+                    )
+                    return VoltageServiceInfo(
+                        service_name=SYSTEM_SERVICE_NAME,
+                        object_path=system_path,
+                        bus_choice=bus_choice_normalized,
+                    )
     finally:
         if bus is not None:
             disconnect = getattr(bus, "disconnect", None)
@@ -3014,17 +3037,17 @@ class DPlusSimService(ServiceInterface):
         }
 
     @method()
-    async def Start(self) -> bool:
+    async def Start(self) -> "b":
         await self._controller.start()
         return True
 
     @method()
-    async def Stop(self) -> bool:
+    async def Stop(self) -> "b":
         await self._controller.stop()
         return True
 
     @method()
-    async def Shutdown(self) -> bool:
+    async def Shutdown(self) -> "b":
         await self._controller.shutdown()
         self._shutdown_callback()
         return True

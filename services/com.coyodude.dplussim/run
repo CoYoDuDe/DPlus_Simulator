@@ -1,48 +1,22 @@
 #!/bin/sh
-set -eu
-if set -o pipefail >/dev/null 2>&1; then
-    :
-fi
-
-resolve_path() {
-    target="$1"
-    if command -v realpath >/dev/null 2>&1; then
-        realpath "$target"
-    elif command -v readlink >/dev/null 2>&1; then
-        readlink -f "$target"
-    else
-        python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$target"
-    fi
-}
-
-if [ -n "${DPLUS_SIM_ROOT:-}" ]; then
-    PROJECT_ROOT="$(resolve_path "${DPLUS_SIM_ROOT}")"
-else
-    SCRIPT_PATH="$(resolve_path "$0")"
-    SERVICE_DIR="$(dirname "${SCRIPT_PATH}")"
-    SERVICES_ROOT="$(dirname "${SERVICE_DIR}")"
-    PROJECT_ROOT="$(dirname "${SERVICES_ROOT}")"
-fi
+exec 2>&1
+. /etc/profile.d/profile.sh
 
 export PYTHONUNBUFFERED=1
-VELIB_PYTHON_PATH=""
+
 for candidate in \
     /opt/victronenergy/dbus-systemcalc-py/ext/velib_python \
     /data/SetupHelper/velib_python \
     /data/SetupHelper/velib_python/latest
 do
     if [ -d "${candidate}" ]; then
-        VELIB_PYTHON_PATH="${candidate}"
+        if [ -n "${PYTHONPATH:-}" ]; then
+            export PYTHONPATH="${candidate}:${PYTHONPATH}"
+        else
+            export PYTHONPATH="${candidate}"
+        fi
         break
     fi
 done
 
-if [ -n "${VELIB_PYTHON_PATH}" ]; then
-    if [ -n "${PYTHONPATH:-}" ]; then
-        export PYTHONPATH="${VELIB_PYTHON_PATH}:${PYTHONPATH}"
-    else
-        export PYTHONPATH="${VELIB_PYTHON_PATH}"
-    fi
-fi
-
-exec python3 "${PROJECT_ROOT}/src/dplus_sim.py" "$@"
+exec python3 /data/DPlus_Simulator/src/dplus_sim.py "$@"
