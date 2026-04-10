@@ -12,6 +12,7 @@
   Artefakte in einem temporären Zielverzeichnis landen.
 
 ### Geändert
+- DPlus verlässt sich für GUI-Dateien und `PageSettings.qml` jetzt nur noch auf den normalen SetupHelper-`INSTALL_FILES`-Pfad. Der zuvor zusätzlich manuelle `updateActiveFile`-Aufruf führte zu doppelten Menüeinträgen bei Reinstall/Update.
 - `IncludeHelpers` wird jetzt mit den echten CLI-Argumenten gesourct. Dadurch erkennt `CommonResources` bei `runFromPm` wieder korrekt `userInteraction=false` und blockiert nicht mehr an der GUI-Neustart-Frage.
 - Der Installer drosselt seine normale Log-Ausgabe jetzt während `runFromPm`-/`auto`-Läufen. Damit vermeidet das Paket das Hängenbleiben des `PackageManager`, der die `setup`-Ausgabe erst nach `wait()` einliest.
 - Die DPlus-QML verzichtet jetzt auch auf `inputMethodHints`, weil diese Property auf dem Zielsystem bereits beim `SSHTunnel` zu einem White-Screen geführt hat und in `MbEditBox` nicht zuverlässig verfügbar ist.

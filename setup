@@ -1160,22 +1160,6 @@ perform_install_preflight() {
   log INFO "python3 wurde gefunden"
 }
 
-install_gui_files_with_helper() {
-  __dplus_gui_page_source="${PROJECT_ROOT}/FileSets/VersionIndependent/PageSettingsDPlusSimulator.qml"
-  __dplus_gui_page_target="/opt/victronenergy/gui/qml/PageSettingsDPlusSimulator.qml"
-  __dplus_settings_page_target="/opt/victronenergy/gui/qml/PageSettings.qml"
-
-  if ! command -v -- updateActiveFile >/dev/null 2>&1; then
-    return
-  fi
-
-  if [ -f "${__dplus_gui_page_source}" ]; then
-    updateActiveFile "${__dplus_gui_page_source}" "${__dplus_gui_page_target}" || true
-  fi
-
-  updateActiveFile "${__dplus_settings_page_target}" || true
-}
-
 perform_install() {
   filesUpdated=false
   servicesUpdated=false
@@ -1185,8 +1169,6 @@ perform_install() {
 
   begin_helper_session
   register_package_dependencies
-
-  install_gui_files_with_helper
 
   filesUpdated=true
   servicesUpdated=true
