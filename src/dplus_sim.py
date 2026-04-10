@@ -349,7 +349,7 @@ VoltageProvider = Callable[[], Awaitable[Optional[float]]]
 SYSTEM_SERVICE_NAME = "com.victronenergy.system"
 BATTERY_SERVICE_PREFIX = "com.victronenergy.battery."
 SYSTEM_VOLTAGE_PATHS = ("/Dc/Battery/Voltage", "/StarterVoltage")
-BATTERY_VOLTAGE_PATHS = ("/Dc/0/Voltage", "/StarterVoltage")
+BATTERY_VOLTAGE_PATHS = ("/Dc/1/Voltage", "/Dc/0/Voltage", "/StarterVoltage")
 STARTER_VOLTAGE_PATH = "/Dc/Battery/Voltage"
 
 
