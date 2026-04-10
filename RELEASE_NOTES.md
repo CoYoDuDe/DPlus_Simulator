@@ -12,6 +12,7 @@
   Artefakte in einem temporären Zielverzeichnis landen.
 
 ### Geändert
+- Der Installer drosselt seine normale Log-Ausgabe jetzt während `runFromPm`-/`auto`-Läufen. Damit vermeidet das Paket das Hängenbleiben des `PackageManager`, der die `setup`-Ausgabe erst nach `wait()` einliest.
 - Die DPlus-QML verzichtet jetzt auch auf `inputMethodHints`, weil diese Property auf dem Zielsystem bereits beim `SSHTunnel` zu einem White-Screen geführt hat und in `MbEditBox` nicht zuverlässig verfügbar ist.
 - Der Dienst verwendet auf Venus OS jetzt eindeutig `dbus_fast` als asyncio-D-Bus-Backend. Die frühere Mehrfach-Fallback-Idee zu `dbus_next` wurde verworfen, weil auf dem Zielsystem `dbus_fast` bereits vorhanden ist.
 - Die DPlus-GUI wurde nochmals vereinfacht und in stabile Unterseiten (`Ausgang`, `Eingänge`, `Schaltschwellen`, `Verzögerungen`, `Manuelle Steuerung`) aufgeteilt. Die problematischen Überschriften mit `font.*` sind entfernt.

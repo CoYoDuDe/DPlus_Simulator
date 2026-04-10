@@ -37,6 +37,7 @@ SETUP_HELPER_VERSION_RAW=""
 SETUP_HELPER_VERSION_NORMALIZED=""
 RESOLVED_CLI_ACTION=""
 standardPromptAndActions='no'
+RUN_FROM_PACKAGE_MANAGER=false
 
 filesUpdated=false
 servicesUpdated=false
@@ -71,6 +72,15 @@ log() {
   __dplus_log_level="$(uppercase "${__dplus_log_level_input}")"
   if [ "$#" -gt 0 ]; then
     shift
+  fi
+  if [ "${RUN_FROM_PACKAGE_MANAGER}" = true ]; then
+    case "${__dplus_log_level}" in
+      ERROR|CRITICAL)
+        ;;
+      *)
+        return
+        ;;
+    esac
   fi
   if command -v -- logMessage >/dev/null 2>&1; then
     logMessage "${__dplus_log_level}" "$*"
@@ -1242,6 +1252,14 @@ USAGE
 main() {
   __dplus_main_cli_action="${1:-}"
   __dplus_main_normalized_cli=""
+
+  for __dplus_main_arg in "$@"; do
+    case "${__dplus_main_arg}" in
+      runFromPm|auto)
+        RUN_FROM_PACKAGE_MANAGER=true
+        ;;
+    esac
+  done
 
   source_helper_resources
 
