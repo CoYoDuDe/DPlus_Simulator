@@ -12,6 +12,7 @@
   Artefakte in einem temporären Zielverzeichnis landen.
 
 ### Geändert
+- Beim Uninstall entfernt DPlus seinen `PageSettings.qml`-Hunk jetzt wiederholt, bis `DPlus_Simulator` wirklich aus `PageSettings.qml.package` verschwunden ist. Das deckt den Fall ab, dass auf dem Gerät noch ein doppelter oder verbleibender Paket-Eintrag existiert.
 - Beim Uninstall räumt DPlus seine beiden GUI-Dateien jetzt zusätzlich explizit über `restoreActiveFile` auf. Das schließt den Fall, in dem der generische SetupHelper-Uninstall den DPlus-Menüeintrag nicht aus `PageSettings.qml` entfernt.
 - DPlus verlässt sich für GUI-Dateien und `PageSettings.qml` jetzt nur noch auf den normalen SetupHelper-`INSTALL_FILES`-Pfad. Der zuvor zusätzlich manuelle `updateActiveFile`-Aufruf führte zu doppelten Menüeinträgen bei Reinstall/Update.
 - `IncludeHelpers` wird jetzt mit den echten CLI-Argumenten gesourct. Dadurch erkennt `CommonResources` bei `runFromPm` wieder korrekt `userInteraction=false` und blockiert nicht mehr an der GUI-Neustart-Frage.

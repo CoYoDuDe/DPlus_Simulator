@@ -1182,10 +1182,16 @@ perform_install() {
 uninstall_gui_files_with_helper() {
   __dplus_gui_page_target="/opt/victronenergy/gui/qml/PageSettingsDPlusSimulator.qml"
   __dplus_settings_page_target="/opt/victronenergy/gui/qml/PageSettings.qml"
+  __dplus_settings_package_file="${__dplus_settings_page_target}.package"
 
   if command -v -- restoreActiveFile >/dev/null 2>&1; then
     restoreActiveFile "${__dplus_gui_page_target}" || true
-    restoreActiveFile "${__dplus_settings_page_target}" || true
+    while [ -f "${__dplus_settings_package_file}" ] && grep -qx "DPlus_Simulator" "${__dplus_settings_package_file}"; do
+      restoreActiveFile "${__dplus_settings_page_target}" || true
+      if ! grep -qx "DPlus_Simulator" "${__dplus_settings_package_file}" 2>/dev/null; then
+        break
+      fi
+    done
   fi
 }
 
