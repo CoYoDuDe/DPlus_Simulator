@@ -1,0 +1,7 @@
+# Change Log
+
+- v0.2.0
+  - Setup auf den normalen SetupHelper-Minimalstil zurueckgebaut.
+  - Statische `DbusSettingsList` eingefuehrt.
+  - Unnoetige eigene Helper-/Fallback-Logik entfernt.
+  - DPlus-GUI bleibt auf konservativen Venus-GUI-v1-Elementen.
