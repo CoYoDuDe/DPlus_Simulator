@@ -13,13 +13,12 @@ D+ Simulator ist ein SetupHelper-Paket fuer Venus OS. Es installiert einen Diens
 
 Repository im SetupHelper als Custom-Paket eintragen und ueber den PackageManager installieren.
 
-Das Paket nutzt den offiziellen SetupHelper-Ablauf:
+Das Paket nutzt den normalen SetupHelper-Standardpfad:
 
 - `IncludeHelpers`
-- `endScript INSTALL_FILES INSTALL_SERVICES ADD_DBUS_SETTINGS`
 - FileSets fuer GUI-Dateien und Patch
 - `DbusSettingsList` fuer die Settings-Registrierung
-- leere `packageDependencies` werden nicht extra verarbeitet
+- Services aus `services/`
 
 ## GUI
 
@@ -32,8 +31,7 @@ Die QML-Seite ist bewusst konservativ aufgebaut und nutzt nur Venus-kompatible G
 - `MbSwitch`
 - `VBusItem`
 
-Es werden keine dynamischen `QtDBus`-/`Qt.createQmlObject`-Konstrukte verwendet.
-Die Seite ist in einfache Untermenüs aufgeteilt, damit sie auf älteren Venus-GUI-Ständen robuster bleibt.
+Es werden keine dynamischen `QtDBus`-/`Qt.createQmlObject`-Konstrukte verwendet. Die Seite ist in einfache Untermenues aufgeteilt, damit sie auf aelteren Venus-GUI-Staenden robuster bleibt.
 
 ## Wichtige Settings
 
