@@ -1,5 +1,10 @@
 # Change Log
 
+- v2.0
+  - SetupHelper-first Stand konsolidiert.
+  - Install/Uninstall der GUI-Patches laeuft jetzt sauber ueber den Paketpfad.
+  - Doppelte Menueeintraege und Patchfehler im aktuellen Teststand behoben.
+
 - v0.2.0
   - Setup auf den normalen SetupHelper-Minimalstil zurueckgebaut.
   - Statische `DbusSettingsList` eingefuehrt.
