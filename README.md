@@ -65,3 +65,4 @@ Es werden keine dynamischen `QtDBus`-/`Qt.createQmlObject`-Konstrukte verwendet.
 - Im Relay-Modus uebernimmt der Dienst die Funktionszuweisung und Ruecksicherung des konfigurierten Relais.
 - Der Dienst nutzt auf Venus OS fuer den asynchronen D-Bus-Teil `dbus_fast` und fuer Settings/VeDbus den vorhandenen `dbus-python`-/`velib_python`-Stack.
 - Der Standard ist `OutputMode=relay` mit dem letzten System-Relay-Kanal. Wenn keine passenden Relays ueber `RpiGpioSetup` vorhanden sind, kann im GUI auf `GPIO-Pin` umgestellt werden.
+- Das Zündsignal ist optional. Wenn es verwendet werden soll, muss das Signal auf einen frei waehlbaren GPIO gefuehrt werden; im GUI werden dafuer `Zuendsignal verwenden`, `Zuend-GPIO` und `Zuend-Pull-Konfiguration` angeboten.

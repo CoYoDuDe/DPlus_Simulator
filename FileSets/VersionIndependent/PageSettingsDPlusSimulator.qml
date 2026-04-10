@@ -24,6 +24,15 @@ MbPage {
 		return fallback || ""
 	}
 
+	function voltageText(item, fallback) {
+		if (item && item.valid && item.value !== undefined && item.value !== null) {
+			var value = parseFloat(item.value)
+			if (!isNaN(value))
+				return value.toFixed(2)
+		}
+		return fallback || "--"
+	}
+
 	function numericValue(text) {
 		var value = parseFloat(text)
 		if (isNaN(value))
@@ -231,7 +240,7 @@ MbPage {
 		}
 
 		MbItemText {
-			text: qsTr("Aktuelle Batteriespannung: %1 V").arg(root.textValue(root.batteryVoltageItem, "--"))
+			text: qsTr("Aktuelle Batteriespannung: %1 V").arg(root.voltageText(root.batteryVoltageItem, "--"))
 			wrapMode: Text.WordWrap
 		}
 	}
