@@ -160,30 +160,6 @@ MbPage {
 		}
 
 		MbEditBox {
-			description: qsTr("Zielspannung [V]")
-			item.bind: root.settingsPath("/TargetVoltage")
-			maximumLength: 6
-			writeAccessLevel: User.AccessInstaller
-			onEditDone: {
-				var value = root.numericValue(newValue)
-				if (value !== undefined)
-					item.setValue(value)
-			}
-		}
-
-		MbEditBox {
-			description: qsTr("Hysterese [V]")
-			item.bind: root.settingsPath("/Hysteresis")
-			maximumLength: 5
-			writeAccessLevel: User.AccessInstaller
-			onEditDone: {
-				var value = root.numericValue(newValue)
-				if (value !== undefined)
-					item.setValue(value)
-			}
-		}
-
-		MbEditBox {
 			description: qsTr("Einschaltspannung [V]")
 			item.bind: root.settingsPath("/OnVoltage")
 			maximumLength: 5

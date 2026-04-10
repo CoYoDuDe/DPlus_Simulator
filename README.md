@@ -40,8 +40,6 @@ Es werden keine dynamischen `QtDBus`-/`Qt.createQmlObject`-Konstrukte verwendet.
 
 - `Enabled`
 - `GpioPin`
-- `TargetVoltage`
-- `Hysteresis`
 - `OnVoltage`
 - `OffVoltage`
 - `ActivationDelaySeconds`
