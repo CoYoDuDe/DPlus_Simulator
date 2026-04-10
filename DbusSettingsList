@@ -1,22 +1,22 @@
-{"path": "/Settings/Devices/DPlusSim/GpioPin", "type": "i", "default": 17, "min": 0, "max": 0, "description": "GPIO-Pin, der die simulierte D+-Leitung schaltet."}
-{"path": "/Settings/Devices/DPlusSim/TargetVoltage", "type": "d", "default": 13.0, "min": 0.0, "max": 0.0, "description": "Zielspannung in Volt fuer ein typisches 12V-System."}
-{"path": "/Settings/Devices/DPlusSim/Hysteresis", "type": "d", "default": 0.4, "min": 0.0, "max": 0.0, "description": "Hystereseband in Volt fuer ein typisches 12V-System."}
-{"path": "/Settings/Devices/DPlusSim/ActivationDelaySeconds", "type": "d", "default": 2.0, "min": 0.0, "max": 0.0, "description": "Verzögerung in Sekunden, bevor der GPIO bei steigender Spannung eingeschaltet wird."}
-{"path": "/Settings/Devices/DPlusSim/DeactivationDelaySeconds", "type": "d", "default": 5.0, "min": 0.0, "max": 0.0, "description": "Verzögerung in Sekunden, bevor der GPIO bei fallender Spannung ausgeschaltet wird."}
-{"path": "/Settings/Devices/DPlusSim/OnVoltage", "type": "d", "default": 13.2, "min": 0.0, "max": 0.0, "description": "Spannung, ab der die D+-Simulation in einem 12V-System aktiviert werden soll."}
-{"path": "/Settings/Devices/DPlusSim/OffVoltage", "type": "d", "default": 12.8, "min": 0.0, "max": 0.0, "description": "Spannung, unter der die D+-Simulation in einem 12V-System deaktiviert wird."}
-{"path": "/Settings/Devices/DPlusSim/OnDelaySec", "type": "d", "default": 2.0, "min": 0.0, "max": 0.0, "description": "Verzögerung in Sekunden bis zum Einschalten, sobald alle Bedingungen erfüllt sind."}
-{"path": "/Settings/Devices/DPlusSim/OffDelaySec", "type": "d", "default": 5.0, "min": 0.0, "max": 0.0, "description": "Verzögerung in Sekunden bis zum Ausschalten, wenn die Bedingungen entfallen."}
-{"path": "/Settings/Devices/DPlusSim/UseIgnition", "type": "b", "default": false, "min": 0, "max": 1, "description": "Aktiviert die Abhängigkeit vom Zündplus-Eingang."}
-{"path": "/Settings/Devices/DPlusSim/IgnitionGpio", "type": "i", "default": 4, "min": 0, "max": 0, "description": "GPIO-Pin, an dem das Zündplus-Signal eingelesen wird."}
-{"path": "/Settings/Devices/DPlusSim/IgnitionPull", "type": "s", "default": "down", "min": 0, "max": 0, "description": "Pull-Up/-Down-Konfiguration für den Zündplus-Eingang (up/down/none)."}
-{"path": "/Settings/Devices/DPlusSim/OutputMode", "type": "s", "default": "relay", "min": 0, "max": 0, "description": "Steuerungsmodus fuer den D+-Ausgang (relay oder gpio)."}
-{"path": "/Settings/Devices/DPlusSim/VoltageSourceMode", "type": "s", "default": "auto", "min": 0, "max": 0, "description": "Spannungsquelle automatisch erkennen oder manuell vorgeben."}
-{"path": "/Settings/Devices/DPlusSim/RelayChannel", "type": "s", "default": "5", "min": 0, "max": 0, "description": "Standardmaessig der letzte System-Relay-Kanal; kann im GUI angepasst werden."}
-{"path": "/Settings/Devices/DPlusSim/ForceOn", "type": "b", "default": false, "min": 0, "max": 1, "description": "Erzwingt dauerhaft ein aktives D+-Signal, unabhängig von den Eingangswerten."}
-{"path": "/Settings/Devices/DPlusSim/ForceOff", "type": "b", "default": false, "min": 0, "max": 1, "description": "Erzwingt ein dauerhaft deaktiviertes D+-Signal, unabhängig von den Eingangswerten."}
-{"path": "/Settings/Devices/DPlusSim/StatusPublishInterval", "type": "d", "default": 2.0, "min": 0.2, "max": 0.0, "description": "Intervall in Sekunden zur Veröffentlichung des Status über D-Bus-Signale."}
-{"path": "/Settings/Devices/DPlusSim/DbusBus", "type": "s", "default": "system", "min": 0, "max": 0, "description": "Interner D-Bus-Typ fuer den Dienst; im Normalfall unveraendert auf system belassen."}
-{"path": "/Settings/Devices/DPlusSim/ServicePath", "type": "s", "default": "com.victronenergy.system", "min": 0, "max": 0, "description": "Automatisch erkannter Spannungsdienst; wird vom Dienst gesetzt."}
-{"path": "/Settings/Devices/DPlusSim/VoltagePath", "type": "s", "default": "/Dc/Battery/Voltage", "min": 0, "max": 0, "description": "Automatisch erkannter Spannungspfad; wird vom Dienst gesetzt."}
-{"path": "/Settings/Devices/DPlusSim/RelayFunctionBackups", "type": "s", "default": "{}", "min": 0, "max": 0, "description": "JSON-Objekt mit den gesicherten Relay-Funktionen je Kanal."}
+{"path":"/Settings/Devices/DPlusSim/GpioPin", "default":17, "min":0, "max":0}
+{"path":"/Settings/Devices/DPlusSim/TargetVoltage", "default":13.0, "min":0.0, "max":0.0}
+{"path":"/Settings/Devices/DPlusSim/Hysteresis", "default":0.4, "min":0.0, "max":0.0}
+{"path":"/Settings/Devices/DPlusSim/ActivationDelaySeconds", "default":2.0, "min":0.0, "max":0.0}
+{"path":"/Settings/Devices/DPlusSim/DeactivationDelaySeconds", "default":5.0, "min":0.0, "max":0.0}
+{"path":"/Settings/Devices/DPlusSim/OnVoltage", "default":13.2, "min":0.0, "max":0.0}
+{"path":"/Settings/Devices/DPlusSim/OffVoltage", "default":12.8, "min":0.0, "max":0.0}
+{"path":"/Settings/Devices/DPlusSim/OnDelaySec", "default":2.0, "min":0.0, "max":0.0}
+{"path":"/Settings/Devices/DPlusSim/OffDelaySec", "default":5.0, "min":0.0, "max":0.0}
+{"path":"/Settings/Devices/DPlusSim/UseIgnition", "default":false, "min":0, "max":1}
+{"path":"/Settings/Devices/DPlusSim/IgnitionGpio", "default":4, "min":0, "max":0}
+{"path":"/Settings/Devices/DPlusSim/IgnitionPull", "default":"down"}
+{"path":"/Settings/Devices/DPlusSim/OutputMode", "default":"relay"}
+{"path":"/Settings/Devices/DPlusSim/VoltageSourceMode", "default":"auto"}
+{"path":"/Settings/Devices/DPlusSim/RelayChannel", "default":"5"}
+{"path":"/Settings/Devices/DPlusSim/ForceOn", "default":false, "min":0, "max":1}
+{"path":"/Settings/Devices/DPlusSim/ForceOff", "default":false, "min":0, "max":1}
+{"path":"/Settings/Devices/DPlusSim/StatusPublishInterval", "default":2.0, "min":0.2, "max":0.0}
+{"path":"/Settings/Devices/DPlusSim/DbusBus", "default":"system"}
+{"path":"/Settings/Devices/DPlusSim/ServicePath", "default":"com.victronenergy.system"}
+{"path":"/Settings/Devices/DPlusSim/VoltagePath", "default":"/Dc/Battery/Voltage"}
+{"path":"/Settings/Devices/DPlusSim/RelayFunctionBackups", "default":"{}"}

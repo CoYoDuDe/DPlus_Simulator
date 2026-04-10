@@ -53,8 +53,6 @@ Es werden keine dynamischen `QtDBus`-/`Qt.createQmlObject`-Konstrukte verwendet.
 - `OutputMode`
 - `VoltageSourceMode`
 - `RelayChannel`
-- `ForceOn`
-- `ForceOff`
 - `StatusPublishInterval`
 
 `ServicePath` und `VoltagePath` werden bei `VoltageSourceMode=auto` automatisch gesetzt. Bei `VoltageSourceMode=manual` koennen sie im GUI fuer eine gezielte Spannungsquelle vorgegeben werden.

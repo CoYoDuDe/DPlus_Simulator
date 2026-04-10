@@ -259,22 +259,6 @@ MbPage {
 			}
 		}
 
-		MbSwitch {
-			name: qsTr("Erzwungen EIN")
-			bind: root.settingsPath("/ForceOn")
-			valueTrue: 1
-			valueFalse: 0
-			writeAccessLevel: User.AccessInstaller
-		}
-
-		MbSwitch {
-			name: qsTr("Erzwungen AUS")
-			bind: root.settingsPath("/ForceOff")
-			valueTrue: 1
-			valueFalse: 0
-			writeAccessLevel: User.AccessInstaller
-		}
-
 		MbItemText {
 			text: qsTr("Aktuelle Quellenspannung: %1 V").arg(root.voltageText(root.currentSourceVoltageItem, "--"))
 			wrapMode: Text.WordWrap
