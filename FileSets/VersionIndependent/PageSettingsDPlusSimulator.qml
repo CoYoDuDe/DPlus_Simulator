@@ -140,13 +140,6 @@ MbPage {
 			writeAccessLevel: User.AccessInstaller
 		}
 
-		MbItemText {
-			text: qsTr("BMV-Relay nutzt fest Kanal 0.")
-			wrapMode: Text.WordWrap
-			show: root.textValue(root.outputModeItem, "gpio") === "relay"
-				&& root.textValue(root.relayTargetItem, "system") === "bmv"
-		}
-
 		MbItemOptions {
 			description: qsTr("Spannungsquelle")
 			bind: root.settingsPath("/VoltageSourceMode")
