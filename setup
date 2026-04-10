@@ -1179,6 +1179,16 @@ perform_install() {
   log INFO "Installation abgeschlossen"
 }
 
+uninstall_gui_files_with_helper() {
+  __dplus_gui_page_target="/opt/victronenergy/gui/qml/PageSettingsDPlusSimulator.qml"
+  __dplus_settings_page_target="/opt/victronenergy/gui/qml/PageSettings.qml"
+
+  if command -v -- restoreActiveFile >/dev/null 2>&1; then
+    restoreActiveFile "${__dplus_gui_page_target}" || true
+    restoreActiveFile "${__dplus_settings_page_target}" || true
+  fi
+}
+
 perform_uninstall() {
   filesUpdated=false
   servicesUpdated=false
@@ -1188,6 +1198,7 @@ perform_uninstall() {
   register_package_dependencies
 
   unregister_dbus_settings
+  uninstall_gui_files_with_helper
 
   servicesUpdated=true
   filesUpdated=true
