@@ -101,8 +101,6 @@ DEFAULT_ON_VOLTAGE = DEFAULT_TARGET_VOLTAGE + DEFAULT_HYSTERESIS / 2.0
 DEFAULT_OFF_VOLTAGE = DEFAULT_TARGET_VOLTAGE - DEFAULT_HYSTERESIS / 2.0
 DEFAULT_ON_DELAY_SECONDS = DEFAULT_ACTIVATION_DELAY_SECONDS
 DEFAULT_OFF_DELAY_SECONDS = DEFAULT_DEACTIVATION_DELAY_SECONDS
-DEFAULT_IGNITION_GPIO = 4
-DEFAULT_IGNITION_PULL = "down"
 DEFAULT_OUTPUT_MODE = "relay"
 DEFAULT_RELAY_CHANNEL = "5"
 DEFAULT_VOLTAGE_SOURCE_MODE = "auto"
@@ -200,30 +198,6 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "description": "Verzögerung in Sekunden bis zum Ausschalten, wenn die Bedingungen entfallen.",
         "min": 0.0,
         "max": 0.0,
-    },
-    "use_ignition": {
-        "path": "/Settings/Devices/DPlusSim/UseIgnition",
-        "type": "b",
-        "default": False,
-        "description": "Aktiviert die Abhängigkeit vom Zündplus-Eingang.",
-        "min": 0,
-        "max": 1,
-    },
-    "ignition_gpio": {
-        "path": "/Settings/Devices/DPlusSim/IgnitionGpio",
-        "type": "i",
-        "default": DEFAULT_IGNITION_GPIO,
-        "description": "GPIO-Pin, an dem das Zündplus-Signal eingelesen wird.",
-        "min": 0,
-        "max": 0,
-    },
-    "ignition_pull": {
-        "path": "/Settings/Devices/DPlusSim/IgnitionPull",
-        "type": "s",
-        "default": DEFAULT_IGNITION_PULL,
-        "description": "Pull-Up/-Down-Konfiguration für den Zündplus-Eingang (up/down/none).",
-        "min": 0,
-        "max": 0,
     },
     "output_mode": {
         "path": "/Settings/Devices/DPlusSim/OutputMode",
@@ -1599,106 +1573,6 @@ class GPIOController:
         self._state = False
 
 
-class GPIOInput:
-    def __init__(
-        self,
-        pin: int,
-        *,
-        enabled: bool = True,
-        pull_mode: str = DEFAULT_IGNITION_PULL,
-    ) -> None:
-        self._logger = logging.getLogger(self.__class__.__name__)
-        self._pin = int(pin)
-        self._enabled = enabled and _RPiGPIO is not None
-        self._pull_mode = self._normalize_pull_mode(pull_mode)
-        self._state = False
-        if self._enabled:
-            self._configure_hardware()
-
-    def _configure_hardware(self) -> None:
-        if not self._enabled:
-            return
-        pud = self._resolve_pull_constant()
-        if pud is None:
-            _RPiGPIO.setup(self._pin, _RPiGPIO.IN)
-        else:
-            _RPiGPIO.setup(self._pin, _RPiGPIO.IN, pull_up_down=pud)
-
-    @property
-    def pin(self) -> int:
-        return self._pin
-
-    @property
-    def pull_mode(self) -> str:
-        return self._pull_mode
-
-    def reconfigure(self, new_pin: int) -> None:
-        new_pin = int(new_pin)
-        if new_pin == self._pin:
-            return
-        self._logger.info("GPIO-Eingang wird von Pin %s auf Pin %s umkonfiguriert", self._pin, new_pin)
-        if self._enabled:
-            _RPiGPIO.cleanup(self._pin)
-            self._pin = new_pin
-            self._configure_hardware()
-        else:
-            self._pin = new_pin
-
-    def set_pull_mode(self, pull_mode: str) -> None:
-        normalized = self._normalize_pull_mode(pull_mode)
-        if normalized == self._pull_mode:
-            return
-        self._logger.info(
-            "GPIO-Eingang %s verwendet nun Pull-%s", self._pin, normalized
-        )
-        self._pull_mode = normalized
-        if self._enabled:
-            _RPiGPIO.cleanup(self._pin)
-            self._configure_hardware()
-
-    def read(self) -> bool:
-        if self._enabled:
-            return bool(_RPiGPIO.input(self._pin))
-        return self._state
-
-    def simulate(self, state: bool) -> None:
-        if self._enabled:
-            self._logger.warning(
-                "Simulierter Zustand für GPIO-Eingang %s wurde angefordert, aber Hardware ist aktiv – Befehl wird ignoriert",
-                self._pin,
-            )
-            return
-        self._state = bool(state)
-
-    def close(self) -> None:
-        if self._enabled:
-            self._logger.debug("GPIO-Eingang %s wird freigegeben", self._pin)
-            _RPiGPIO.cleanup(self._pin)
-
-    def _normalize_pull_mode(self, mode: str) -> str:
-        normalized = str(mode or "").strip().lower()
-        if normalized in {"up", "pullup", "pud_up"}:
-            return "up"
-        if normalized in {"none", "off", "floating"}:
-            return "none"
-        return "down"
-
-    def _resolve_pull_constant(self) -> Optional[int]:
-        if _RPiGPIO is None:
-            return None
-        if self._pull_mode == "up":
-            return getattr(_RPiGPIO, "PUD_UP", None)
-        if self._pull_mode == "none":
-            pud_off = getattr(_RPiGPIO, "PUD_OFF", None)
-            if pud_off is None:
-                self._logger.warning(
-                    "GPIO-Bibliothek unterstützt keinen PUD_OFF, Pull-Mode 'none' fällt auf 'down' zurück"
-                )
-                return getattr(_RPiGPIO, "PUD_DOWN", None)
-            return pud_off
-        return getattr(_RPiGPIO, "PUD_DOWN", None)
-
-
 class RelayController:
     """Schaltet D-Bus-basierte Relays über com.victronenergy.system."""
 
@@ -1993,10 +1867,6 @@ class SimulatorStatus:
     deadline: Optional[float] = None
     effective_on_voltage: float = 0.0
     effective_off_voltage: float = 0.0
-    ignition_enabled: bool = False
-    ignition_state: bool = False
-    ignition_gpio: int = 0
-    ignition_pull_mode: str = DEFAULT_IGNITION_PULL
     allow_on: bool = True
     off_required: bool = False
     conditions_on: Dict[str, bool] = field(default_factory=dict)
@@ -2033,10 +1903,6 @@ class SimulatorStatus:
             "deadline": self.deadline or 0.0,
             "effective_on_voltage": self.effective_on_voltage,
             "effective_off_voltage": self.effective_off_voltage,
-            "ignition_enabled": self.ignition_enabled,
-            "ignition_state": self.ignition_state,
-            "ignition_gpio": self.ignition_gpio,
-            "ignition_pull_mode": self.ignition_pull_mode,
             "allow_on": self.allow_on,
             "off_required": self.off_required,
             "conditions_on": dict(self.conditions_on),
@@ -2056,12 +1922,6 @@ class SimulatorStatus:
             "voltage_source_failures": self.voltage_source_failures,
             "voltage_source_last_error": self.voltage_source_last_error,
             "voltage_source_last_update": self.voltage_source_last_update,
-            "ignition": {
-                "enabled": self.ignition_enabled,
-                "state": self.ignition_state,
-                "gpio": self.ignition_gpio,
-                "pull_mode": self.ignition_pull_mode,
-            },
             "delays": {
                 "pending_state": self.pending_state if self.pending_state is not None else "none",
                 "deadline": self.deadline or 0.0,
@@ -2082,11 +1942,6 @@ class DPlusController:
             self._settings.get("relay_channel", DEFAULT_RELAY_CHANNEL),
             bus_choice=self._settings.get("dbus_bus", "system"),
             enabled=use_gpio,
-        )
-        self._ignition_input = GPIOInput(
-            self._settings["ignition_gpio"],
-            enabled=use_gpio,
-            pull_mode=self._settings.get("ignition_pull", DEFAULT_IGNITION_PULL),
         )
         self._output_mode = self._normalize_output_mode(
             self._settings.get("output_mode", DEFAULT_OUTPUT_MODE)
@@ -2110,14 +1965,10 @@ class DPlusController:
             output_mode=self._output_mode,
             output_target="",
             relay_channel=str(self._settings.get("relay_channel", "")),
-            ignition_enabled=bool(self._settings["use_ignition"]),
-            ignition_gpio=int(self._settings["ignition_gpio"]),
-            ignition_pull_mode=str(self._settings.get("ignition_pull", DEFAULT_IGNITION_PULL)),
         )
         self._apply_output_configuration(initial=True)
         self._status.effective_on_voltage = upper_threshold
         self._status.effective_off_voltage = lower_threshold
-        self._status.ignition_state = self._ignition_input.read()
         self._voltage = 0.0
         self._loop_task: Optional[asyncio.Task[None]] = None
         self._running = False
@@ -2620,10 +2471,6 @@ class DPlusController:
             output_mode_changed = False
             if "gpio_pin" in new_settings:
                 self._gpio.reconfigure(int(self._settings["gpio_pin"]))
-            if "ignition_gpio" in new_settings:
-                self._ignition_input.reconfigure(int(self._settings["ignition_gpio"]))
-            if "ignition_pull" in new_settings:
-                self._ignition_input.set_pull_mode(self._settings["ignition_pull"])
             if "dbus_bus" in new_settings:
                 self._relay.set_bus_choice(self._settings.get("dbus_bus", "system"))
             if "relay_channel" in new_settings:
@@ -2645,11 +2492,6 @@ class DPlusController:
             self._status.off_voltage = self._resolve_off_voltage()
             self._status.on_delay_seconds = self._resolve_on_delay()
             self._status.off_delay_seconds = self._resolve_off_delay()
-            self._status.ignition_enabled = bool(self._settings["use_ignition"])
-            self._status.ignition_gpio = int(self._settings["ignition_gpio"])
-            self._status.ignition_pull_mode = str(
-                self._settings.get("ignition_pull", DEFAULT_IGNITION_PULL)
-            )
             self._status.output_mode = self._output_mode
             self._status.output_target = getattr(
                 self._output_controller, "description", self._status.output_target
@@ -2684,7 +2526,6 @@ class DPlusController:
         await self._release_relay_assignment()
         self._gpio.close()
         self._relay.close()
-        self._ignition_input.close()
 
     def get_settings(self) -> Dict[str, Any]:
         return dict(self._settings)
@@ -2805,18 +2646,13 @@ class DPlusController:
 
     def _evaluate_locked(self) -> None:
         now = time.monotonic()
-        ignition_state = self._ignition_input.read() if self._ignition_input else False
         simulator_enabled = bool(self._settings.get("enabled", True))
-        ignition_required = bool(self._settings.get("use_ignition", False))
         source_available = bool(self._voltage_provider) and self._voltage_source_available
         self._status.voltage_source_available = source_available
         on_dependencies: Dict[str, bool] = {}
         off_dependencies: Dict[str, bool] = {}
         if not simulator_enabled:
             off_dependencies["enabled"] = True
-        if ignition_required:
-            on_dependencies["ignition"] = ignition_state
-            off_dependencies["ignition"] = not ignition_state
         on_dependencies["voltage_source"] = source_available
         if not source_available:
             off_dependencies["voltage_source"] = True
@@ -2856,9 +2692,6 @@ class DPlusController:
         self._status.deadline = switch_state["deadline"] or 0.0
         self._status.effective_on_voltage = switch_state["upper_threshold"]
         self._status.effective_off_voltage = switch_state["lower_threshold"]
-        self._status.ignition_enabled = ignition_required
-        self._status.ignition_state = ignition_state
-        self._status.ignition_pull_mode = str(self._settings.get("ignition_pull", DEFAULT_IGNITION_PULL))
         self._status.allow_on = simulator_enabled and switch_state["on_ready"]
         self._status.off_required = switch_state["off_required"]
         self._status.conditions_on = dict(switch_state["conditions_on"])

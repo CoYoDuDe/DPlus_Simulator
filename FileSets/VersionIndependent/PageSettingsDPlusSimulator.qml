@@ -8,7 +8,6 @@ MbPage {
 
 	property string settingsPrefix: "com.victronenergy.settings/Settings/Devices/DPlusSim"
 	property VBusItem outputModeItem: VBusItem { bind: settingsPath("/OutputMode") }
-	property VBusItem useIgnitionItem: VBusItem { bind: settingsPath("/UseIgnition") }
 	property VBusItem sourceModeItem: VBusItem { bind: settingsPath("/VoltageSourceMode") }
 	property VBusItem servicePathItem: VBusItem { bind: settingsPath("/ServicePath") }
 	property VBusItem voltagePathItem: VBusItem { bind: settingsPath("/VoltagePath") }
@@ -123,39 +122,6 @@ MbPage {
 			item.bind: root.settingsPath("/VoltagePath")
 			maximumLength: 64
 			show: root.textValue(root.sourceModeItem, "auto") === "manual"
-			writeAccessLevel: User.AccessInstaller
-		}
-
-		MbSwitch {
-			name: qsTr("Zündsignal verwenden")
-			bind: root.settingsPath("/UseIgnition")
-			valueTrue: 1
-			valueFalse: 0
-			writeAccessLevel: User.AccessInstaller
-		}
-
-		MbEditBox {
-			description: qsTr("Zünd-GPIO")
-			item.bind: root.settingsPath("/IgnitionGpio")
-			maximumLength: 2
-			show: root.useIgnitionItem.valid && root.useIgnitionItem.value
-			writeAccessLevel: User.AccessInstaller
-			onEditDone: {
-				var value = parseInt(newValue, 10)
-				if (!isNaN(value))
-					item.setValue(value)
-			}
-		}
-
-		MbItemOptions {
-			description: qsTr("Zünd-Pull-Konfiguration")
-			bind: root.settingsPath("/IgnitionPull")
-			possibleValues: [
-				MbOption { description: qsTr("Floating"); value: "none" },
-				MbOption { description: qsTr("Pull-down"); value: "down" },
-				MbOption { description: qsTr("Pull-up"); value: "up" }
-			]
-			show: root.useIgnitionItem.valid && root.useIgnitionItem.value
 			writeAccessLevel: User.AccessInstaller
 		}
 

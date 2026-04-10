@@ -28,21 +28,6 @@
       "minimum": 0.0,
       "description": "Verzögerung in Sekunden bis zum Ausschalten."
     },
-    "use_ignition": {
-      "type": "boolean",
-      "description": "Aktiviert den Zündplus-Eingang als zusätzliche Einschaltbedingung."
-    },
-    "ignition_gpio": {
-      "type": "integer",
-      "minimum": 0,
-      "description": "GPIO-Pin für das Zündplus-Signal."
-    },
-    "ignition_pull": {
-      "type": "string",
-      "enum": ["up", "down", "none"],
-      "description": "Pull-Up/-Down-Konfiguration für den Zündplus-Eingang.",
-      "default": "down"
-    },
     "output_mode": {
       "type": "string",
       "enum": ["gpio", "relay"],
@@ -82,9 +67,6 @@
     "off_voltage",
     "on_delay_seconds",
     "off_delay_seconds",
-    "use_ignition",
-    "ignition_gpio",
-    "ignition_pull",
     "output_mode",
     "relay_channel",
     "dbus_bus",
