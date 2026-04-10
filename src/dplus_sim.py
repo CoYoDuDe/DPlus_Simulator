@@ -103,6 +103,7 @@ DEFAULT_ON_DELAY_SECONDS = DEFAULT_ACTIVATION_DELAY_SECONDS
 DEFAULT_OFF_DELAY_SECONDS = DEFAULT_DEACTIVATION_DELAY_SECONDS
 DEFAULT_OUTPUT_MODE = "relay"
 DEFAULT_RELAY_CHANNEL = "5"
+DEFAULT_RELAY_TARGET = "system"
 DEFAULT_VOLTAGE_SOURCE_MODE = "auto"
 DEFAULT_STATUS_PUBLISH_INTERVAL = 2.0
 
@@ -148,6 +149,13 @@ def normalize_relay_channel(channel: str) -> str:
     if lowered.endswith("/state"):
         text = text[: -len("/state")]
     return text
+
+
+def normalize_relay_target(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text == "bmv":
+        return "bmv"
+    return "system"
 
 
 SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
@@ -199,6 +207,30 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "min": 0.0,
         "max": 0.0,
     },
+    "manual_override": {
+        "path": "/Settings/Devices/DPlusSim/ManualOverride",
+        "type": "b",
+        "default": False,
+        "description": "Aktiviert die manuelle Übersteuerung des Ausgangs.",
+        "min": 0,
+        "max": 1,
+    },
+    "manual_state": {
+        "path": "/Settings/Devices/DPlusSim/ManualState",
+        "type": "b",
+        "default": False,
+        "description": "Gewünschter Ausgangszustand bei manueller Übersteuerung.",
+        "min": 0,
+        "max": 1,
+    },
+    "output_state": {
+        "path": "/Settings/Devices/DPlusSim/OutputState",
+        "type": "b",
+        "default": False,
+        "description": "Aktueller Ausgangszustand des Simulators.",
+        "min": 0,
+        "max": 1,
+    },
     "output_mode": {
         "path": "/Settings/Devices/DPlusSim/OutputMode",
         "type": "s",
@@ -220,6 +252,14 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "type": "s",
         "default": DEFAULT_RELAY_CHANNEL,
         "description": "Ausgewählter Relay-Kanal aus der gpiosetup-Konfiguration.",
+        "min": 0,
+        "max": 0,
+    },
+    "relay_target": {
+        "path": "/Settings/Devices/DPlusSim/RelayTarget",
+        "type": "s",
+        "default": DEFAULT_RELAY_TARGET,
+        "description": "Wählt zwischen System-Relay und BMV-Relay.",
         "min": 0,
         "max": 0,
     },
@@ -1614,6 +1654,8 @@ class RelayController:
 
     @property
     def description(self) -> str:
+        if self._service.startswith(BATTERY_SERVICE_PREFIX):
+            return "relay:bmv/0"
         suffix = self._channel or "unset"
         return f"relay:{suffix}"
 
@@ -1642,6 +1684,13 @@ class RelayController:
         self._channel = normalized
         self._reset()
         self._state = False
+
+    def set_service(self, service: str) -> None:
+        normalized = str(service or "").strip()
+        if normalized == self._service:
+            return
+        self._service = normalized
+        self._reset()
 
     def write(self, state: bool) -> None:
         state_bool = bool(state)
@@ -1716,7 +1765,7 @@ class RelayController:
                     )
 
     def _ensure_item_locked(self) -> Optional[Any]:
-        if not self._enabled or not self._channel:
+        if not self._enabled or not self._channel or not self._service:
             return None
         if self._item is not None:
             return self._item
@@ -1863,6 +1912,9 @@ class SimulatorStatus:
     output_mode: str = DEFAULT_OUTPUT_MODE
     output_target: str = ""
     relay_channel: str = ""
+    relay_target: str = DEFAULT_RELAY_TARGET
+    manual_override: bool = False
+    manual_state: bool = False
     pending_state: Optional[bool] = None
     deadline: Optional[float] = None
     effective_on_voltage: float = 0.0
@@ -1899,6 +1951,9 @@ class SimulatorStatus:
             "output_mode": self.output_mode,
             "output_target": self.output_target,
             "relay_channel": self.relay_channel,
+            "relay_target": self.relay_target,
+            "manual_override": self.manual_override,
+            "manual_state": self.manual_state,
             "pending_state": self.pending_state if self.pending_state is not None else "none",
             "deadline": self.deadline or 0.0,
             "effective_on_voltage": self.effective_on_voltage,
@@ -1946,6 +2001,9 @@ class DPlusController:
         self._output_mode = self._normalize_output_mode(
             self._settings.get("output_mode", DEFAULT_OUTPUT_MODE)
         )
+        self._relay_target = normalize_relay_target(
+            self._settings.get("relay_target", DEFAULT_RELAY_TARGET)
+        )
         self._output_controller: Any = self._gpio
         self._switch = SwitchLogic(
             on_threshold=self._resolve_on_voltage(),
@@ -1965,6 +2023,9 @@ class DPlusController:
             output_mode=self._output_mode,
             output_target="",
             relay_channel=str(self._settings.get("relay_channel", "")),
+            relay_target=self._relay_target,
+            manual_override=bool(self._settings.get("manual_override", False)),
+            manual_state=bool(self._settings.get("manual_state", False)),
         )
         self._apply_output_configuration(initial=True)
         self._status.effective_on_voltage = upper_threshold
@@ -2014,6 +2075,21 @@ class DPlusController:
         self._relay_function_monitor = monitor
         monitor.set_callback(self._handle_relay_function_update)
 
+    def _supports_relay_assignment(self) -> bool:
+        return (
+            self._output_mode == "relay"
+            and self._relay_target == "system"
+            and self._relay.service == SYSTEM_SERVICE_NAME
+        )
+
+    def _resolve_relay_service(self) -> str:
+        if self._relay_target == "system":
+            return SYSTEM_SERVICE_NAME
+        service_name = str(self._settings.get("service_path", "")).strip()
+        if service_name.startswith(BATTERY_SERVICE_PREFIX):
+            return service_name
+        return ""
+
     async def initialize_relay_function_assignments(
         self, assignments: Dict[str, str]
     ) -> None:
@@ -2027,6 +2103,8 @@ class DPlusController:
     async def _process_relay_function_assignments(
         self, assignments: Dict[str, str], *, initial: bool = False
     ) -> None:
+        if not self._supports_relay_assignment():
+            return
         normalized = {
             normalize_relay_channel(channel): str(value)
             for channel, value in assignments.items()
@@ -2124,6 +2202,10 @@ class DPlusController:
         return True, release_channel
 
     async def _release_relay_assignment(self) -> None:
+        if not self._supports_relay_assignment():
+            async with self._lock:
+                self._assigned_function_channel = None
+            return
         monitor = self._relay_function_monitor
         neutral = self._relay_function_neutral
         channel_to_release: Optional[str]
@@ -2151,6 +2233,10 @@ class DPlusController:
     async def _reset_relay_function_assignment(
         self, channel: Optional[str] = None
     ) -> None:
+        if not self._supports_relay_assignment():
+            async with self._lock:
+                self._assigned_function_channel = None
+            return
         if channel is None:
             await self._release_relay_assignment()
             return
@@ -2179,7 +2265,7 @@ class DPlusController:
         monitor = self._relay_function_monitor
         if monitor is None:
             return False
-        target_channel = self._relay.channel if self._output_mode == "relay" else ""
+        target_channel = self._relay.channel if self._supports_relay_assignment() else ""
         previous_channel = self._assigned_function_channel
         neutral = self._relay_function_neutral
         backups_changed = False
@@ -2315,13 +2401,18 @@ class DPlusController:
     def _apply_output_configuration(self, *, initial: bool = False) -> None:
         previous = getattr(self, "_output_controller", None)
         target_mode = self._normalize_output_mode(self._output_mode)
+        self._relay_target = normalize_relay_target(
+            self._settings.get("relay_target", DEFAULT_RELAY_TARGET)
+        )
         other_controller: Optional[Any] = None
         if target_mode == "relay":
-            channel = str(self._settings.get("relay_channel") or "").strip()
+            relay_service = self._resolve_relay_service()
+            channel = "0" if self._relay_target == "bmv" else str(self._settings.get("relay_channel") or "").strip()
             if not channel:
                 channel = DEFAULT_RELAY_CHANNEL
                 self._settings["relay_channel"] = channel
             self._relay.set_bus_choice(self._settings.get("dbus_bus", "system"))
+            self._relay.set_service(relay_service)
             self._relay.reconfigure(channel)
             self._output_controller = self._relay
             other_controller = self._gpio
@@ -2340,6 +2431,7 @@ class DPlusController:
         self._status.relay_channel = (
             self._relay.channel if target_mode == "relay" else ""
         )
+        self._status.relay_target = self._relay_target
         self._status.gpio_state = self._output_controller.read()
         if initial and target_mode == "relay" and not self._relay.channel:
             self._status.relay_channel = ""
@@ -2460,6 +2552,7 @@ class DPlusController:
         async with self._lock:
             previous_output_mode = self._output_mode
             previous_relay_channel = self._relay.channel
+            previous_relay_target = self._relay_target
             self._settings.update(new_settings)
             self._switch.configure(
                 on_threshold=self._resolve_on_voltage(),
@@ -2469,10 +2562,16 @@ class DPlusController:
             )
             relay_channel_changed = False
             output_mode_changed = False
+            relay_target_changed = False
             if "gpio_pin" in new_settings:
                 self._gpio.reconfigure(int(self._settings["gpio_pin"]))
             if "dbus_bus" in new_settings:
                 self._relay.set_bus_choice(self._settings.get("dbus_bus", "system"))
+            if "relay_target" in new_settings:
+                self._relay_target = normalize_relay_target(
+                    self._settings.get("relay_target", DEFAULT_RELAY_TARGET)
+                )
+                relay_target_changed = self._relay_target != previous_relay_target
             if "relay_channel" in new_settings:
                 new_channel = normalize_relay_channel(
                     self._settings.get("relay_channel", "")
@@ -2485,13 +2584,20 @@ class DPlusController:
                     output_mode_changed = new_mode != previous_output_mode
                     self._output_mode = new_mode
                     self._apply_output_configuration()
-            elif "relay_channel" in new_settings or "dbus_bus" in new_settings:
+            elif (
+                "relay_channel" in new_settings
+                or "dbus_bus" in new_settings
+                or "relay_target" in new_settings
+                or "service_path" in new_settings
+            ):
                 if self._output_mode == "relay":
                     self._apply_output_configuration()
             self._status.on_voltage = self._resolve_on_voltage()
             self._status.off_voltage = self._resolve_off_voltage()
             self._status.on_delay_seconds = self._resolve_on_delay()
             self._status.off_delay_seconds = self._resolve_off_delay()
+            self._status.manual_override = bool(self._settings.get("manual_override", False))
+            self._status.manual_state = bool(self._settings.get("manual_state", False))
             self._status.output_mode = self._output_mode
             self._status.output_target = getattr(
                 self._output_controller, "description", self._status.output_target
@@ -2499,8 +2605,9 @@ class DPlusController:
             self._status.relay_channel = (
                 self._relay.channel if self._output_mode == "relay" else ""
             )
+            self._status.relay_target = self._relay_target
             self._status.gpio_state = self._output_controller.read()
-            if output_mode_changed or relay_channel_changed:
+            if output_mode_changed or relay_channel_changed or relay_target_changed:
                 backups_changed = await self._update_relay_function_assignment_locked()
             release_required = self._output_mode == "gpio" and bool(
                 self._assigned_function_channel
@@ -2647,21 +2754,45 @@ class DPlusController:
     def _evaluate_locked(self) -> None:
         now = time.monotonic()
         simulator_enabled = bool(self._settings.get("enabled", True))
+        manual_override = bool(self._settings.get("manual_override", False))
+        manual_state = bool(self._settings.get("manual_state", False))
         source_available = bool(self._voltage_provider) and self._voltage_source_available
         self._status.voltage_source_available = source_available
-        on_dependencies: Dict[str, bool] = {}
-        off_dependencies: Dict[str, bool] = {}
-        if not simulator_enabled:
-            off_dependencies["enabled"] = True
-        on_dependencies["voltage_source"] = source_available
-        if not source_available:
-            off_dependencies["voltage_source"] = True
-        switch_state = self._switch.evaluate(
-            self._voltage,
-            now,
-            on_dependencies=on_dependencies,
-            off_dependencies=off_dependencies,
-        )
+        if manual_override:
+            desired_state = simulator_enabled and manual_state
+            switch_state = {
+                "changed": desired_state != self._status.gpio_state,
+                "state": desired_state,
+                "pending_state": None,
+                "deadline": None,
+                "upper_threshold": self._switch.on_threshold,
+                "lower_threshold": self._switch.off_threshold,
+                "conditions_on": {
+                    "enabled": simulator_enabled,
+                    "manual_override": True,
+                    "manual_state": manual_state,
+                },
+                "conditions_off": {"enabled": not simulator_enabled},
+                "on_ready": simulator_enabled,
+                "off_required": not desired_state,
+                "pending_direction": "none",
+                "on_delay_remaining": 0.0,
+                "off_delay_remaining": 0.0,
+            }
+        else:
+            on_dependencies: Dict[str, bool] = {}
+            off_dependencies: Dict[str, bool] = {}
+            if not simulator_enabled:
+                off_dependencies["enabled"] = True
+            on_dependencies["voltage_source"] = source_available
+            if not source_available:
+                off_dependencies["voltage_source"] = True
+            switch_state = self._switch.evaluate(
+                self._voltage,
+                now,
+                on_dependencies=on_dependencies,
+                off_dependencies=off_dependencies,
+            )
         if switch_state["changed"]:
             self._logger.info(
                 "Ausgang (%s) wechselt zu %s (Spannung %.3f V)",
@@ -2688,6 +2819,8 @@ class DPlusController:
             self._output_controller, "description", self._status.output_target
         )
         self._status.voltage = self._voltage
+        self._status.manual_override = manual_override
+        self._status.manual_state = manual_state
         self._status.pending_state = switch_state["pending_state"]
         self._status.deadline = switch_state["deadline"] or 0.0
         self._status.effective_on_voltage = switch_state["upper_threshold"]
@@ -3117,6 +3250,13 @@ async def run_async(args: argparse.Namespace) -> None:
             voltage_reader = None
             return False
 
+        await controller.update_settings(
+            {
+                "service_path": resolved_voltage_source.service_name,
+                "voltage_path": resolved_voltage_source.object_path,
+            }
+        )
+
         await controller.set_voltage_provider(
             voltage_reader.read_voltage,
             voltage_reader.description,
@@ -3206,9 +3346,6 @@ async def run_async(args: argparse.Namespace) -> None:
 
         settings_backend.set_callback(handle_setting_update)
 
-    if not shutdown_event.is_set():
-        await controller.start()
-
     bus: Optional[MessageBus] = None
     service: Optional[DPlusSimService] = None
     if not shutdown_event.is_set() and BusType is not None and not args.no_dbus:
@@ -3238,8 +3375,21 @@ async def run_async(args: argparse.Namespace) -> None:
             bus = None
             service = None
 
-    if service is None:
-        controller.set_status_callback(lambda _status: None)
+    last_output_state: Optional[bool] = None
+
+    async def handle_status(status: Dict[str, Any]) -> None:
+        nonlocal last_output_state
+        if service is not None:
+            service.emit_status(status)
+        current_state = bool(status.get("gpio_state", False))
+        if current_state != last_output_state:
+            last_output_state = current_state
+            await persist_settings({"output_state": int(current_state)})
+
+    controller.set_status_callback(handle_status)
+
+    if not shutdown_event.is_set():
+        await controller.start()
 
     waveform_task: Optional[asyncio.Task[None]] = None
     if debug_enabled and getattr(args, "simulate_waveform", 0.0) and not shutdown_event.is_set():

@@ -7,8 +7,11 @@ MbPage {
 	title: qsTr("D+ Simulator")
 
 	property string settingsPrefix: "com.victronenergy.settings/Settings/Devices/DPlusSim"
+	property VBusItem relayTargetItem: VBusItem { bind: settingsPath("/RelayTarget") }
+	property VBusItem manualOverrideItem: VBusItem { bind: settingsPath("/ManualOverride") }
 	property VBusItem outputModeItem: VBusItem { bind: settingsPath("/OutputMode") }
 	property VBusItem sourceModeItem: VBusItem { bind: settingsPath("/VoltageSourceMode") }
+	property VBusItem outputStateItem: VBusItem { bind: settingsPath("/OutputState") }
 	property VBusItem servicePathItem: VBusItem { bind: settingsPath("/ServicePath") }
 	property VBusItem voltagePathItem: VBusItem { bind: settingsPath("/VoltagePath") }
 	property string selectedVoltageBind: {
@@ -67,6 +70,32 @@ MbPage {
 			writeAccessLevel: User.AccessInstaller
 		}
 
+		MbSwitch {
+			name: qsTr("Manuelle Steuerung")
+			bind: root.settingsPath("/ManualOverride")
+			valueTrue: 1
+			valueFalse: 0
+			writeAccessLevel: User.AccessInstaller
+		}
+
+		MbSwitch {
+			name: qsTr("D+ Signal")
+			bind: root.settingsPath("/OutputState")
+			valueTrue: 1
+			valueFalse: 0
+			enabled: false
+			show: !(root.manualOverrideItem.valid && root.manualOverrideItem.value)
+		}
+
+		MbSwitch {
+			name: qsTr("D+ Signal")
+			bind: root.settingsPath("/ManualState")
+			valueTrue: 1
+			valueFalse: 0
+			show: root.manualOverrideItem.valid && root.manualOverrideItem.value
+			writeAccessLevel: User.AccessInstaller
+		}
+
 		MbItemOptions {
 			description: qsTr("Ausgangsmodus")
 			bind: root.settingsPath("/OutputMode")
@@ -74,6 +103,17 @@ MbPage {
 				MbOption { description: qsTr("GPIO-Pin"); value: "gpio" },
 				MbOption { description: qsTr("Relay"); value: "relay" }
 			]
+			writeAccessLevel: User.AccessInstaller
+		}
+
+		MbItemOptions {
+			description: qsTr("Relay-Ziel")
+			bind: root.settingsPath("/RelayTarget")
+			possibleValues: [
+				MbOption { description: qsTr("System-Relay"); value: "system" },
+				MbOption { description: qsTr("BMV-Relay"); value: "bmv" }
+			]
+			show: root.textValue(root.outputModeItem, "gpio") === "relay"
 			writeAccessLevel: User.AccessInstaller
 		}
 
@@ -96,7 +136,15 @@ MbPage {
 			maximumLength: 40
 			overwriteMode: false
 			show: root.textValue(root.outputModeItem, "gpio") === "relay"
+				&& root.textValue(root.relayTargetItem, "system") === "system"
 			writeAccessLevel: User.AccessInstaller
+		}
+
+		MbItemText {
+			text: qsTr("BMV-Relay nutzt fest Kanal 0.")
+			wrapMode: Text.WordWrap
+			show: root.textValue(root.outputModeItem, "gpio") === "relay"
+				&& root.textValue(root.relayTargetItem, "system") === "bmv"
 		}
 
 		MbItemOptions {

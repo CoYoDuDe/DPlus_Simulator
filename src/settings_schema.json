@@ -28,6 +28,18 @@
       "minimum": 0.0,
       "description": "Verzögerung in Sekunden bis zum Ausschalten."
     },
+    "manual_override": {
+      "type": "boolean",
+      "description": "Aktiviert die manuelle Übersteuerung des Ausgangs."
+    },
+    "manual_state": {
+      "type": "boolean",
+      "description": "Manueller Ausgangszustand bei aktiver manueller Übersteuerung."
+    },
+    "output_state": {
+      "type": "boolean",
+      "description": "Aktueller Ausgangszustand des D+ Signals."
+    },
     "output_mode": {
       "type": "string",
       "enum": ["gpio", "relay"],
@@ -39,6 +51,12 @@
       "minLength": 0,
       "description": "Relay-Kanal aus der gpiosetup-Konfiguration (z. B. 4brelays/0).",
       "default": "4brelays/0"
+    },
+    "relay_target": {
+      "type": "string",
+      "enum": ["system", "bmv"],
+      "description": "Wählt zwischen System-Relay und BMV-Relay.",
+      "default": "system"
     },
     "dbus_bus": {
       "type": "string",
@@ -67,8 +85,12 @@
     "off_voltage",
     "on_delay_seconds",
     "off_delay_seconds",
+    "manual_override",
+    "manual_state",
+    "output_state",
     "output_mode",
     "relay_channel",
+    "relay_target",
     "dbus_bus",
     "service_path",
     "voltage_path"

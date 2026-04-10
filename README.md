@@ -44,9 +44,13 @@ Es werden keine dynamischen `QtDBus`-/`Qt.createQmlObject`-Konstrukte verwendet.
 - `OffVoltage`
 - `OnDelaySec`
 - `OffDelaySec`
+- `ManualOverride`
+- `ManualState`
+- `OutputState`
 - `OutputMode`
 - `VoltageSourceMode`
 - `RelayChannel`
+- `RelayTarget`
 
 `ServicePath` und `VoltagePath` werden bei `VoltageSourceMode=auto` automatisch gesetzt. Bei `VoltageSourceMode=manual` koennen sie im GUI fuer eine gezielte Spannungsquelle vorgegeben werden.
 
@@ -55,6 +59,7 @@ Es werden keine dynamischen `QtDBus`-/`Qt.createQmlObject`-Konstrukte verwendet.
 - Der Dienst erwartet eine gueltige Starterspannungsquelle auf dem gewaehlten D-Bus.
 - Ohne gueltige Batteriespannung auf dem Victron-D-Bus startet der Simulator nicht produktiv.
 - Ueber `D+ Simulator aktiv` im GUI kann der Ausgang zu Testzwecken sauber ein- und ausgeschaltet werden, ohne die restlichen Einstellungen zu verlieren.
+- Ueber `Manuelle Steuerung` kann die Automatik uebersteuert werden. Dann schaltet `D+ Signal` den Ausgang direkt.
 - Wenn mehrere Batteriespannungen vorhanden sind, kann die Spannungsquelle im GUI auf `Manuell` gestellt und ueber D-Bus-Dienst und Spannungspfad gezielt ausgewaehlt werden.
 - Im Relay-Modus uebernimmt der Dienst die Funktionszuweisung und Ruecksicherung des konfigurierten Relais.
 - Der Dienst nutzt auf Venus OS fuer den asynchronen D-Bus-Teil `dbus_fast` und fuer Settings/VeDbus den vorhandenen `dbus-python`-/`velib_python`-Stack.
