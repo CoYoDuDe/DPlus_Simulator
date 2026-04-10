@@ -809,6 +809,7 @@ define_builtin_helper_fallback() {
 }
 
 source_helper_resources() {
+  __dplus_source_helper_args="$*"
   set --
   __dplus_source_helper_candidate=""
 
@@ -851,7 +852,7 @@ source_helper_resources() {
     if [ -f "${__dplus_source_helper_candidate}" ] && [ -r "${__dplus_source_helper_candidate}" ]; then
       remember_setup_helper_root "${__dplus_source_helper_candidate}"
       # shellcheck disable=SC1090
-      . "${__dplus_source_helper_candidate}"
+      . "${__dplus_source_helper_candidate}" ${__dplus_source_helper_args}
       return
     fi
 
@@ -860,7 +861,7 @@ source_helper_resources() {
       if [ -r "${__dplus_source_helper_candidate}/IncludeHelpers" ]; then
         remember_setup_helper_root "${__dplus_source_helper_candidate}/IncludeHelpers"
         # shellcheck disable=SC1090
-        . "${__dplus_source_helper_candidate}/IncludeHelpers"
+        . "${__dplus_source_helper_candidate}/IncludeHelpers" ${__dplus_source_helper_args}
         return
       fi
     fi
@@ -1261,7 +1262,7 @@ main() {
     esac
   done
 
-  source_helper_resources
+  source_helper_resources "$@"
 
   if [ -n "${__dplus_main_cli_action}" ]; then
     case "${__dplus_main_cli_action}" in
