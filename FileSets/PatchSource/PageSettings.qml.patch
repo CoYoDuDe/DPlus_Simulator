@@ -6,7 +6,7 @@
  
 +		////// added for D+ simulator package
 +		MbSubMenu {
-+			description: qsTr("D+ simulator")
++			description: qsTr("D+ Simulator")
 +			subpage: Component { PageSettingsDPlusSimulator {} }
 +		}
 +

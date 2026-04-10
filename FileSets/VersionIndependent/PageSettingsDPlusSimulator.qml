@@ -4,7 +4,7 @@ import com.victron.velib 1.0
 
 MbPage {
 	id: root
-	title: qsTr("D+ simulator")
+	title: qsTr("D+ Simulator")
 
 	property string settingsPrefix: "com.victronenergy.settings/Settings/Devices/DPlusSim"
 	property VBusItem outputModeItem: VBusItem { bind: settingsPath("/OutputMode") }
