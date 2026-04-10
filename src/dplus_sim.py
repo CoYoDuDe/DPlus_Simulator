@@ -26,18 +26,20 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, Iterable, Mapping, Optional, Set, Tuple
 
-try:  # pragma: no-cover - optionale Abhängigkeiten
-    from dbus_next import BusType, Message, Variant
-    from dbus_next.aio import MessageBus
-    from dbus_next.constants import MessageType
-    from dbus_next.service import ServiceInterface, method, signal
-except Exception:  # pragma: no-cover - Fallback ohne D-Bus
+try:  # pragma: no-cover - Venus-OS asyncio D-Bus
+    from dbus_fast import BusType, Message, Variant
+    from dbus_fast.aio import MessageBus
+    from dbus_fast.constants import MessageType
+    from dbus_fast.service import ServiceInterface, method, signal
+    DBUS_NEXT_BACKEND = "dbus_fast"
+except Exception:  # pragma: no-cover - Fallback ohne asyncio-D-Bus
+    DBUS_NEXT_BACKEND = None
     BusType = None
     Message = None
     MessageType = type("MessageType", (), {"SIGNAL": "signal"})
 
     class Variant:  # type: ignore[override]
-        """Minimaler Ersatz, wenn dbus-next nicht verfügbar ist."""
+        """Minimaler Ersatz, wenn keine asyncio-D-Bus-Bibliothek verfügbar ist."""
 
         def __init__(self, _signature: str, value: Any) -> None:
             self.value = value
@@ -61,7 +63,7 @@ except Exception:  # pragma: no-cover - Fallback ohne D-Bus
     class MessageBus:  # type: ignore[override]
         @classmethod
         async def connect(cls, *_args: Any, **_kwargs: Any) -> "MessageBus":
-            raise RuntimeError("D-Bus-Unterstützung ist nicht verfügbar (dbus-next fehlt)")
+            raise RuntimeError("D-Bus-Unterstützung ist nicht verfügbar (dbus_fast fehlt)")
 
     class BusType:  # type: ignore[override]
         SESSION = "session"
