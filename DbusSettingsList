@@ -13,5 +13,5 @@
 {"path":"/Settings/Devices/DPlusSim/RelayTarget", "default":"system"}
 {"path":"/Settings/Devices/DPlusSim/DbusBus", "default":"system"}
 {"path":"/Settings/Devices/DPlusSim/ServicePath", "default":"com.victronenergy.system"}
-{"path":"/Settings/Devices/DPlusSim/VoltagePath", "default":"/Dc/Battery/Voltage"}
+{"path":"/Settings/Devices/DPlusSim/VoltagePath", "default":"/StarterVoltage"}
 {"path":"/Settings/Devices/DPlusSim/RelayFunctionBackups", "default":"{}"}
