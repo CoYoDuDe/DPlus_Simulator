@@ -44,13 +44,13 @@
       "type": "string",
       "enum": ["gpio", "relay"],
       "description": "Legt fest, ob der Simulator einen GPIO oder ein Relay schaltet.",
-      "default": "gpio"
+      "default": "relay"
     },
     "relay_channel": {
       "type": "string",
       "minLength": 0,
       "description": "Relay-Kanal aus der gpiosetup-Konfiguration (z. B. 4brelays/0).",
-      "default": "4brelays/0"
+      "default": "5"
     },
     "relay_target": {
       "type": "string",
@@ -61,17 +61,20 @@
     "dbus_bus": {
       "type": "string",
       "enum": ["system", "session"],
-      "description": "Zu verwendender D-Bus."
+      "description": "Zu verwendender D-Bus.",
+      "default": "system"
     },
     "service_path": {
       "type": "string",
       "description": "Automatisch erkannter Dienst für die Starterspannung (schreibgeschützt).",
-      "readOnly": true
+      "readOnly": true,
+      "default": "com.victronenergy.system"
     },
     "voltage_path": {
       "type": "string",
       "description": "Spannungspfad der Starterspannung (schreibgeschützt, z. B. /StarterVoltage).",
-      "readOnly": true
+      "readOnly": true,
+      "default": "/StarterVoltage"
     },
     "relay_function_backups": {
       "type": "string",
