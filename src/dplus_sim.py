@@ -318,6 +318,7 @@ BATTERY_SERVICE_PREFIX = "com.victronenergy.battery."
 SYSTEM_STARTER_VOLTAGE_PATHS = ("/StarterVoltage",)
 SYSTEM_VOLTAGE_FALLBACK_PATHS = ("/Dc/Battery/Voltage",)
 BATTERY_VOLTAGE_PATHS = ("/Dc/1/Voltage", "/Dc/0/Voltage", "/StarterVoltage")
+BATTERY_RELAY_STATE_PATHS = ("/Relay/0/State", "/Relay/State")
 STARTER_VOLTAGE_PATH = "/Dc/Battery/Voltage"
 
 
@@ -498,6 +499,73 @@ async def resolve_bmv712_service(bus_choice: str) -> VoltageServiceInfo:
     """Alias für Kompatibilität – verweist auf die Starterspannungs-Erkennung."""
 
     return await resolve_starter_voltage_service(bus_choice)
+
+
+async def resolve_battery_relay_service(
+    bus_choice: str,
+    preferred_service: str = "",
+) -> VoltageServiceInfo:
+    """Sucht einen Batterie-/BMV-Dienst mit schaltbarem Relay."""
+
+    if BusType is None or MessageBus is None or Message is None:
+        raise VoltageServiceDiscoveryError("D-Bus-Unterstützung ist nicht verfügbar")
+
+    logger = logging.getLogger("BatteryRelayResolver")
+    bus_choice_normalized, bus_type = resolve_bus_configuration(bus_choice)
+    bus: Optional[MessageBus] = None
+    try:
+        connect_kwargs = {"bus_type": bus_type} if bus_type is not None else {}
+        bus = await MessageBus(**connect_kwargs).connect()
+    except Exception as exc:
+        raise VoltageServiceDiscoveryError(
+            f"Verbindung zum {bus_choice_normalized}-Bus fehlgeschlagen: {exc}"
+        ) from exc
+
+    try:
+        names = await _list_dbus_names(bus)
+        candidates = [name for name in names if name.startswith(BATTERY_SERVICE_PREFIX)]
+        if preferred_service and preferred_service in candidates:
+            ordered_candidates = [preferred_service] + [
+                name for name in candidates if name != preferred_service
+            ]
+        else:
+            ordered_candidates = candidates
+
+        logger.debug("Gefundene Victron-Batteriedienste für Relay-Suche: %s", ", ".join(ordered_candidates))
+        for candidate in ordered_candidates:
+            for relay_path in BATTERY_RELAY_STATE_PATHS:
+                try:
+                    value = await _read_bus_value(bus, candidate, relay_path)
+                except Exception as exc:
+                    logger.debug(
+                        "Relay bei %s%s konnte nicht gelesen werden: %s",
+                        candidate,
+                        relay_path,
+                        exc,
+                    )
+                    continue
+                if value is None:
+                    continue
+                logger.info("Battery-Relay über %s%s gefunden", candidate, relay_path)
+                return VoltageServiceInfo(
+                    service_name=candidate,
+                    object_path=relay_path,
+                    bus_choice=bus_choice_normalized,
+                )
+    finally:
+        if bus is not None:
+            disconnect = getattr(bus, "disconnect", None)
+            if callable(disconnect):
+                with contextlib.suppress(Exception):
+                    result = disconnect()
+                    if inspect.isawaitable(result):
+                        await result
+            wait_for_disconnect = getattr(bus, "wait_for_disconnect", None)
+            if callable(wait_for_disconnect):
+                with contextlib.suppress(Exception):
+                    await wait_for_disconnect()
+
+    raise VoltageServiceDiscoveryError("Kein Batterie-/BMV-Relay auf dem D-Bus gefunden")
 
 
 def normalize_voltage_source_mode(value: Any) -> str:
@@ -1633,6 +1701,7 @@ class RelayController:
         self._enabled = enabled and VeDbusItemImport is not None and dbus is not None
         self._item: Optional[Any] = None
         self._bus: Optional[Any] = None
+        self._state_path_override = ""
         if not self._enabled:
             self._logger.debug("RelayController läuft im Simulationsmodus")
 
@@ -1655,7 +1724,8 @@ class RelayController:
     @property
     def description(self) -> str:
         if self._service.startswith(BATTERY_SERVICE_PREFIX):
-            return "relay:bmv/0"
+            suffix = self._state_path_override or f"/Relay/{self._channel or '0'}/State"
+            return f"relay:bmv:{suffix}"
         suffix = self._channel or "unset"
         return f"relay:{suffix}"
 
@@ -1690,6 +1760,13 @@ class RelayController:
         if normalized == self._service:
             return
         self._service = normalized
+        self._reset()
+
+    def set_state_path(self, state_path: Optional[str]) -> None:
+        normalized = str(state_path or "").strip()
+        if normalized == self._state_path_override:
+            return
+        self._state_path_override = normalized
         self._reset()
 
     def write(self, state: bool) -> None:
@@ -1772,7 +1849,7 @@ class RelayController:
         assert dbus is not None
         assert VeDbusItemImport is not None
         bus = dbus.SystemBus() if self._bus_choice == "system" else dbus.SessionBus()
-        path = f"/Relay/{self._channel}/State"
+        path = self._state_path_override or f"/Relay/{self._channel}/State"
         try:
             item = VeDbusItemImport(bus, self._service, path, createsignal=False)
         except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
@@ -2053,6 +2130,8 @@ class DPlusController:
         }
         self._voltage_source_available = False
         self._relay_function_monitor: Optional[RelayFunctionMonitor] = None
+        self._battery_relay_service = ""
+        self._battery_relay_path = ""
         self._relay_function_assignments: Dict[str, str] = {}
         self._relay_function_tag = RELAY_FUNCTION_TAG
         self._relay_function_neutral = RELAY_FUNCTION_NEUTRAL
@@ -2085,10 +2164,44 @@ class DPlusController:
     def _resolve_relay_service(self) -> str:
         if self._relay_target == "system":
             return SYSTEM_SERVICE_NAME
+        if self._battery_relay_service:
+            return self._battery_relay_service
         service_name = str(self._settings.get("service_path", "")).strip()
         if service_name.startswith(BATTERY_SERVICE_PREFIX):
             return service_name
         return ""
+
+    def _resolve_relay_state_path(self) -> str:
+        if self._relay_target != "bmv":
+            return ""
+        return self._battery_relay_path
+
+    async def _refresh_battery_relay_service_locked(self) -> bool:
+        if self._relay_target != "bmv":
+            changed = bool(self._battery_relay_service or self._battery_relay_path)
+            self._battery_relay_service = ""
+            self._battery_relay_path = ""
+            return changed
+        preferred_service = str(self._settings.get("service_path", "")).strip()
+        try:
+            resolved = await resolve_battery_relay_service(
+                str(self._settings.get("dbus_bus", "system")),
+                preferred_service=preferred_service,
+            )
+        except VoltageServiceDiscoveryError as exc:
+            self._logger.warning("BMV-/Battery-Relay konnte nicht automatisch gefunden werden: %s", exc)
+            resolved_service = ""
+            resolved_path = ""
+        else:
+            resolved_service = resolved.service_name
+            resolved_path = resolved.object_path
+        changed = (
+            resolved_service != self._battery_relay_service
+            or resolved_path != self._battery_relay_path
+        )
+        self._battery_relay_service = resolved_service
+        self._battery_relay_path = resolved_path
+        return changed
 
     async def initialize_relay_function_assignments(
         self, assignments: Dict[str, str]
@@ -2407,16 +2520,19 @@ class DPlusController:
         other_controller: Optional[Any] = None
         if target_mode == "relay":
             relay_service = self._resolve_relay_service()
+            relay_state_path = self._resolve_relay_state_path()
             channel = "0" if self._relay_target == "bmv" else str(self._settings.get("relay_channel") or "").strip()
             if not channel:
                 channel = DEFAULT_RELAY_CHANNEL
                 self._settings["relay_channel"] = channel
             self._relay.set_bus_choice(self._settings.get("dbus_bus", "system"))
             self._relay.set_service(relay_service)
+            self._relay.set_state_path(relay_state_path if self._relay_target == "bmv" else "")
             self._relay.reconfigure(channel)
             self._output_controller = self._relay
             other_controller = self._gpio
         else:
+            self._relay.set_state_path("")
             self._output_controller = self._gpio
             other_controller = self._relay
         if previous is not None and previous is not self._output_controller:
