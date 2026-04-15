@@ -2162,13 +2162,6 @@ class DPlusController:
         monitor.set_callback(self._handle_relay_function_update)
 
     def _supports_relay_assignment(self) -> bool:
-        """RpiGpioSetup stellt manuell schaltbare Relays direkt bereit.
-
-        Für den aktuell unterstützten Venus-OS-/Raspberry-Pi-Pfad nutzt der
-        Dienst diese Relays unmittelbar. Eine automatische Umwidmung von
-        Relay-Funktionen über /Settings/Relays wird daher bewusst nicht
-        aktiviert.
-        """
         return False
 
     def _resolve_relay_service(self) -> str:
@@ -2787,7 +2780,6 @@ class DPlusController:
                         available_flag = bool(provider_details.get("available", False))
                         failures = int(provider_details.get("failures", 0))
                         last_update_hint = float(provider_details.get("last_update", 0.0))
-                        source_mode = str(provider_details.get("mode", "dbus"))
                         self._status.voltage_source_state = state
                         self._status.voltage_source_message = message
                         self._status.voltage_source_available = available_flag
@@ -2797,8 +2789,7 @@ class DPlusController:
                             last_update_hint if last_update_hint else time.time()
                         )
                         self._voltage_source_available = available_flag
-                        if source_mode != "local":
-                            self._voltage = 0.0
+                        self._voltage = 0.0
                     elif provider_error is not None:
                         self._status.voltage_source_state = "error"
                         self._status.voltage_source_message = str(provider_error)
@@ -3123,26 +3114,58 @@ async def run_async(args: argparse.Namespace) -> None:
     merged_settings["dbus_bus"] = selected_bus
 
     if not args.no_dbus:
-        if not (
+        logger = logging.getLogger("DPlusSim")
+        native_settings_available = (
             VelibSettingsDevice is not None
             and dbus is not None
             and DBusGMainLoop is not None
             and GLib is not None
-        ):
-            raise RuntimeError(
-                "SettingsDevice/velib_python ist nicht verfügbar. "
-                "Die native Venus-OS-Version von DPlus benötigt SettingsDevice."
-            )
-        try:
-            settings_backend = VelibSettingsAdapter(
-                SETTINGS_DEFINITIONS,
-                merged_settings.get("dbus_bus", "system"),
-            )
-            settings_overrides = await settings_backend.start()
-        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
-            raise RuntimeError(
-                f"SettingsDevice konnte nicht initialisiert werden: {exc}"
-            ) from exc
+        )
+
+        if native_settings_available:
+            try:
+                settings_backend = VelibSettingsAdapter(
+                    SETTINGS_DEFINITIONS,
+                    merged_settings.get("dbus_bus", "system"),
+                )
+                settings_overrides = await settings_backend.start()
+                logger.info("Einstellungen werden über SettingsDevice verwaltet")
+            except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+                logger.warning(
+                    "SettingsDevice konnte nicht initialisiert werden (%s). "
+                    "Wechsle auf direkten D-Bus-Settings-Adapter.",
+                    exc,
+                )
+                settings_backend = None
+
+        if settings_backend is None:
+            if BusType is None or MessageBus is None or Message is None:
+                logger.warning(
+                    "Weder SettingsDevice noch dbus_fast sind verfügbar. "
+                    "Starte mit Standardeinstellungen ohne Settings-Synchronisierung."
+                )
+            else:
+                try:
+                    connect_kwargs = (
+                        {"bus_type": bus_type_for_connection}
+                        if bus_type_for_connection is not None
+                        else {}
+                    )
+                    settings_bus = await MessageBus(**connect_kwargs).connect()
+                    bridge = SettingsBridge(settings_bus, SETTINGS_DEFINITIONS)
+                    settings_backend = DbusNextSettingsAdapter(bridge)
+                    settings_overrides = await settings_backend.start()
+                    logger.info(
+                        "Einstellungen werden über den direkten D-Bus-Adapter verwaltet"
+                    )
+                except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+                    logger.warning(
+                        "Direkter D-Bus-Settings-Adapter konnte nicht initialisiert werden (%s). "
+                        "Starte mit Standardeinstellungen ohne Settings-Synchronisierung.",
+                        exc,
+                    )
+                    settings_backend = None
+                    settings_overrides = {}
 
     merged_settings.update(settings_overrides)
     if args.bus:
@@ -3169,7 +3192,6 @@ async def run_async(args: argparse.Namespace) -> None:
         service: str = "",
         path: str = "",
         bus_choice: Optional[str] = None,
-        mode: str = "dbus",
     ) -> None:
         info = {
             "state": state,
@@ -3179,7 +3201,7 @@ async def run_async(args: argparse.Namespace) -> None:
             "bus": bus_choice
             if bus_choice is not None
             else merged_settings.get("dbus_bus", "system"),
-            "mode": mode,
+            "mode": "dbus",
             "available": False,
         }
         await controller.set_voltage_provider(None, "unavailable", source_info=info)
@@ -3197,16 +3219,12 @@ async def run_async(args: argparse.Namespace) -> None:
         resolved_voltage_source = None
         voltage_constraints = {}
 
-        if args.no_dbus:
-            reason = (
-                "D-Bus ist per --no-dbus deaktiviert – lokaler Modus ohne "
-                "externe Spannungsquelle ist aktiv"
-            )
-            logging.getLogger("DPlusSim").warning(reason)
-            await mark_voltage_failure(reason, state="disabled", mode="local")
-            return False
-
-        if BusType is None or MessageBus is None or Message is None:
+        if (
+            args.no_dbus
+            or BusType is None
+            or MessageBus is None
+            or Message is None
+        ):
             reason = "D-Bus-Unterstützung nicht verfügbar – der Dienst wird beendet"
             logging.getLogger("DPlusSim").error(reason)
             await mark_voltage_failure(reason)
@@ -3613,7 +3631,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bus", choices=("system", "session"), help="Zu verwendender D-Bus", default=None)
     parser.add_argument("--dry-run", action="store_true", help="GPIO-Befehle nicht an Hardware weiterreichen")
     parser.add_argument(
-        "--no-dbus", action="store_true", help="D-Bus komplett deaktivieren und nur im lokalen Modus laufen"
+        "--no-dbus", action="store_true", help="D-Bus-Registrierung deaktivieren, auch wenn verfügbar"
     )
     parser.add_argument(
         "--enable-debug",
