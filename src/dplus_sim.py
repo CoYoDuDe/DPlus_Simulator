@@ -149,6 +149,35 @@ def normalize_relay_channel(channel: str) -> str:
     return text
 
 
+def map_system_relay_channel_to_internal(channel: str) -> str:
+    """Wandelt die UI-/Settings-Nummerierung 1..N in interne 0..N-1 Kanäle um.
+
+    Für bestehende Installationen bleiben bereits 0-basierte Werte kompatibel.
+    Nicht-numerische Werte werden unverändert weitergereicht.
+    """
+
+    normalized = normalize_relay_channel(channel)
+    if not normalized:
+        return ""
+    if not normalized.isdigit():
+        return normalized
+    number = int(normalized)
+    if number <= 0:
+        return "0"
+    return str(number - 1)
+
+
+def map_system_relay_channel_to_display(channel: str) -> str:
+    """Wandelt interne 0-basierte System-Relay-Kanäle zurück in UI-Werte."""
+
+    normalized = normalize_relay_channel(channel)
+    if not normalized:
+        return ""
+    if not normalized.isdigit():
+        return normalized
+    return str(int(normalized) + 1)
+
+
 def normalize_relay_target(value: Any) -> str:
     text = str(value or "").strip().lower()
     if text == "bmv":
@@ -1709,7 +1738,7 @@ class RelayController:
 
     @staticmethod
     def _normalize_channel(channel: str) -> str:
-        return normalize_relay_channel(channel)
+        return map_system_relay_channel_to_internal(channel)
 
     @staticmethod
     def _is_disconnected_error(exc: Exception) -> bool:
@@ -1732,7 +1761,7 @@ class RelayController:
     def description(self) -> str:
         if self._service.startswith(BATTERY_SERVICE_PREFIX):
             return "relay:bmv/0"
-        suffix = self._channel or "unset"
+        suffix = map_system_relay_channel_to_display(self._channel) or "unset"
         return f"relay:{suffix}"
 
     def set_bus_choice(self, new_choice: str) -> None:
@@ -2543,7 +2572,9 @@ class DPlusController:
         self._status.output_mode = target_mode
         self._status.output_target = getattr(self._output_controller, "description", "")
         self._status.relay_channel = (
-            self._relay.channel if target_mode == "relay" else ""
+            map_system_relay_channel_to_display(self._relay.channel)
+            if target_mode == "relay" and self._relay_target == "system"
+            else self._relay.channel if target_mode == "relay" else ""
         )
         self._status.relay_target = self._relay_target
         self._status.gpio_state = self._output_controller.read()
@@ -2726,7 +2757,9 @@ class DPlusController:
                 self._output_controller, "description", self._status.output_target
             )
             self._status.relay_channel = (
-                self._relay.channel if self._output_mode == "relay" else ""
+                map_system_relay_channel_to_display(self._relay.channel)
+                if self._output_mode == "relay" and self._relay_target == "system"
+                else self._relay.channel if self._output_mode == "relay" else ""
             )
             self._status.relay_target = self._relay_target
             self._status.gpio_state = self._output_controller.read()
