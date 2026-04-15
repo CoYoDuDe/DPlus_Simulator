@@ -1852,8 +1852,8 @@ class GPIOController:
     def write(self, state: bool) -> None:
         self._state = bool(state)
 
-    self._state = state_bool
-    self._sync_state(state_bool, force=True)
+    def read(self) -> bool:
+        return self._state
 
     @property
     def description(self) -> str:
