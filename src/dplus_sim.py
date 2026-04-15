@@ -1951,11 +1951,6 @@ class RelayController:
     def write(self, state: bool) -> None:
         state_bool = bool(state)
         if state_bool == self._state:
-            # trotzdem sicherstellen, dass der Zustand synchronisiert ist
-            if state_bool and not self._enabled:
-                self._state = state_bool
-            else:
-                self._sync_state(state_bool, force=False)
             return
         self._state = state_bool
         self._sync_state(state_bool, force=True)
