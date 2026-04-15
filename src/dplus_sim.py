@@ -71,15 +71,24 @@ except Exception:  # pragma: no-cover - Fallback ohne asyncio-D-Bus
 
 
 
-try:  # pragma: no-cover - optionale Abhängigkeiten für velib_python
+try:  # pragma: no-cover - optionale Abhängigkeit
     import dbus  # type: ignore
-    from dbus.mainloop.glib import DBusGMainLoop  # type: ignore
-    from gi.repository import GLib  # type: ignore
-    from settingsdevice import SettingsDevice as VelibSettingsDevice  # type: ignore
-except Exception:  # pragma: no-cover - Fallback ohne velib_python
+except Exception:  # pragma: no-cover
     dbus = None  # type: ignore
+
+try:  # pragma: no-cover - optionale Abhängigkeit
+    from dbus.mainloop.glib import DBusGMainLoop  # type: ignore
+except Exception:  # pragma: no-cover
     DBusGMainLoop = None  # type: ignore
+
+try:  # pragma: no-cover - optionale Abhängigkeit
+    from gi.repository import GLib  # type: ignore
+except Exception:  # pragma: no-cover
     GLib = None  # type: ignore
+
+try:  # pragma: no-cover - optionale Abhängigkeit für velib_python
+    from settingsdevice import SettingsDevice as VelibSettingsDevice  # type: ignore
+except Exception:  # pragma: no-cover - Fallback ohne settingsdevice
     VelibSettingsDevice = None  # type: ignore
 
 try:  # pragma: no-cover - optionale Abhängigkeit für vedbus
