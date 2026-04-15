@@ -1956,28 +1956,7 @@ class RelayController:
         self._sync_state(state_bool, force=True)
 
     def read(self) -> bool:
-        if not self._enabled or not self._channel:
-            return self._state
-        value: Any = None
-        with self._lock:
-            for attempt in range(2):
-                iface = self._ensure_item_locked()
-                if iface is None:
-                    return self._state
-                try:
-                    value = iface.GetValue()
-                    value = getattr(value, "value", value)
-                    break
-                except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
-                    if attempt == 0 and self._is_disconnected_error(exc):
-                        self._logger.info(
-                            "Relay-D-Bus-Verbindung für %s wurde getrennt, verbinde erneut",
-                            self.description,
-                        )
-                        self._reset_locked()
-                        continue
-                    self._logger.debug("Konnte Relay-Zustand nicht lesen: %s", exc)
-                    return self._state
+        return self._state
         if value is not None:
             try:
                 self._state = bool(int(value))
