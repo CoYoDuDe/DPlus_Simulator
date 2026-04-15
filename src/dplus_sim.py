@@ -4006,7 +4006,7 @@ async def run_async(args: argparse.Namespace) -> None:
         await controller.start()
 
     settings_poll_task: Optional[asyncio.Task[None]] = None
-    if not shutdown_event.is_set():
+    if not shutdown_event.is_set() and not isinstance(settings_backend, VelibSettingsAdapter):
         settings_poll_task = asyncio.create_task(poll_runtime_settings())
 
     waveform_task: Optional[asyncio.Task[None]] = None
