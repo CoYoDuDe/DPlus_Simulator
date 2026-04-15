@@ -10,6 +10,43 @@ Entwicklungsumgebungen ohne diese Abhängigkeiten lauffähig zu sein.
 
 from __future__ import annotations
 
+import os
+import sys
+
+
+_VELIB_PYTHON_CANDIDATES = (
+    "/opt/victronenergy/dbus-systemcalc-py/ext/velib_python",
+    "/data/SetupHelper/velib_python",
+    "/data/SetupHelper/velib_python/latest",
+)
+_ADDED_VELIB_PYTHON_PATHS: list[str] = []
+
+
+def _extend_pythonpath_for_velib() -> None:
+    """Macht velib_python-Module auch ohne vorbereiteten PYTHONPATH auffindbar.
+
+    Auf Venus OS liegen settingsdevice.py und vedbus.py oft in velib_python, aber
+    beim manuellen Starten des Skripts ist dieser Pfad nicht immer gesetzt.
+    SetupHelper-Services ergänzen ihn üblicherweise im run-Skript. Damit der Dienst
+    identisch reagiert – egal ob manuell oder via runit gestartet – ergänzen wir die
+    bekannten Suchpfade hier zusätzlich direkt im Python-Code.
+    """
+
+    global _ADDED_VELIB_PYTHON_PATHS
+
+    existing = set(sys.path)
+    for candidate in _VELIB_PYTHON_CANDIDATES:
+        if not os.path.isdir(candidate):
+            continue
+        if candidate in existing:
+            continue
+        sys.path.insert(0, candidate)
+        existing.add(candidate)
+        _ADDED_VELIB_PYTHON_PATHS.append(candidate)
+
+
+_extend_pythonpath_for_velib()
+
 import argparse
 import asyncio
 import contextlib
@@ -71,24 +108,15 @@ except Exception:  # pragma: no-cover - Fallback ohne asyncio-D-Bus
 
 
 
-try:  # pragma: no-cover - optionale Abhängigkeit
+try:  # pragma: no-cover - optionale Abhängigkeiten für velib_python
     import dbus  # type: ignore
-except Exception:  # pragma: no-cover
-    dbus = None  # type: ignore
-
-try:  # pragma: no-cover - optionale Abhängigkeit
     from dbus.mainloop.glib import DBusGMainLoop  # type: ignore
-except Exception:  # pragma: no-cover
-    DBusGMainLoop = None  # type: ignore
-
-try:  # pragma: no-cover - optionale Abhängigkeit
     from gi.repository import GLib  # type: ignore
-except Exception:  # pragma: no-cover
-    GLib = None  # type: ignore
-
-try:  # pragma: no-cover - optionale Abhängigkeit für velib_python
     from settingsdevice import SettingsDevice as VelibSettingsDevice  # type: ignore
-except Exception:  # pragma: no-cover - Fallback ohne settingsdevice
+except Exception:  # pragma: no-cover - Fallback ohne velib_python
+    dbus = None  # type: ignore
+    DBusGMainLoop = None  # type: ignore
+    GLib = None  # type: ignore
     VelibSettingsDevice = None  # type: ignore
 
 try:  # pragma: no-cover - optionale Abhängigkeit für vedbus
@@ -3458,6 +3486,17 @@ async def run_async(args: argparse.Namespace) -> None:
 
     if not args.no_dbus:
         logger = logging.getLogger("DPlusSim")
+        if _ADDED_VELIB_PYTHON_PATHS:
+            logger.info(
+                "Zusätzliche velib_python-Pfade aktiv: %s",
+                ", ".join(_ADDED_VELIB_PYTHON_PATHS),
+            )
+        logger.info(
+            "Backend-Status: dbus_fast=%s, settingsdevice=%s, vedbus=%s",
+            bool(DBUS_NEXT_BACKEND),
+            VelibSettingsDevice is not None,
+            VeDbusItemImport is not None,
+        )
         native_settings_available = (
             VelibSettingsDevice is not None
             and dbus is not None
