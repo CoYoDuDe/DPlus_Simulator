@@ -70,10 +70,6 @@ except Exception:  # pragma: no-cover - Fallback ohne asyncio-D-Bus
         SYSTEM = "system"
 
 
-try:  # pragma: no-cover - optional Abhängigkeit
-    import RPi.GPIO as _RPiGPIO
-except Exception:  # pragma: no-cover - Entwicklungsfallback
-    _RPiGPIO = None
 
 try:  # pragma: no-cover - optionale Abhängigkeiten für velib_python
     import dbus  # type: ignore
@@ -183,6 +179,15 @@ def normalize_relay_target(value: Any) -> str:
     if text == "bmv":
         return "bmv"
     return "system"
+
+
+def normalize_bool(value: Any) -> bool:
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        return normalized not in {"", "0", "false", "off", "no"}
+    if isinstance(value, (int, float)):
+        return value != 0
+    return bool(value)
 
 
 SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
@@ -336,6 +341,38 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "min": 0,
         "max": 0,
     },
+    "use_ignition": {
+        "path": "/Settings/Devices/DPlusSim/UseIgnition",
+        "type": "b",
+        "default": False,
+        "description": "Aktiviert die optionale Zündplus-Logik über vorhandene D-Bus-Digitaleingänge.",
+        "min": 0,
+        "max": 1,
+    },
+    "emergency_off_voltage": {
+        "path": "/Settings/Devices/DPlusSim/EmergencyOffVoltage",
+        "type": "d",
+        "default": 11.8,
+        "description": "Sicherheitsabschaltung bei extremer Unterspannung trotz aktiver Zündung.",
+        "min": 0.0,
+        "max": 0.0,
+    },
+    "emergency_off_delay_seconds": {
+        "path": "/Settings/Devices/DPlusSim/EmergencyOffDelaySec",
+        "type": "d",
+        "default": 2.0,
+        "description": "Verzögerung der Sicherheitsabschaltung bei extremer Unterspannung.",
+        "min": 0.0,
+        "max": 0.0,
+    },
+    "ignition_state": {
+        "path": "/Settings/Devices/DPlusSim/IgnitionState",
+        "type": "b",
+        "default": False,
+        "description": "Aktuell erkannter Zündstatus des automatischen D-Bus-Eingangs.",
+        "min": 0,
+        "max": 1,
+    },
     "relay_function_backups": {
         "path": "/Settings/Devices/DPlusSim/RelayFunctionBackups",
         "type": "s",
@@ -362,6 +399,8 @@ SYSTEM_STARTER_VOLTAGE_PATHS = ("/StarterVoltage",)
 SYSTEM_VOLTAGE_FALLBACK_PATHS = ("/Dc/Battery/Voltage",)
 BATTERY_VOLTAGE_PATHS = ("/Dc/1/Voltage", "/Dc/0/Voltage", "/StarterVoltage")
 STARTER_VOLTAGE_PATH = "/Dc/Battery/Voltage"
+DIGITAL_INPUT_SERVICE_PREFIX = "com.victronenergy.digitalinput."
+IGNITION_STATE_PATHS = ("/State", "/InputState")
 
 
 class VoltageServiceDiscoveryError(RuntimeError):
@@ -375,6 +414,9 @@ class VoltageServiceInfo:
     bus_choice: str
     product_id: Optional[int] = None
     product_name: str = ""
+
+
+IgnitionServiceInfo = VoltageServiceInfo
 
 
 # Rückwärtskompatibilität zu älteren Namen
@@ -541,6 +583,52 @@ async def resolve_bmv712_service(bus_choice: str) -> VoltageServiceInfo:
     """Alias für Kompatibilität – verweist auf die Starterspannungs-Erkennung."""
 
     return await resolve_starter_voltage_service(bus_choice)
+
+
+async def resolve_ignition_input_service(bus_choice: str) -> IgnitionServiceInfo:
+    """Sucht einen vorhandenen Venus-OS-Digitaleingang für Zündplus."""
+
+    if BusType is None or MessageBus is None or Message is None:
+        raise VoltageServiceDiscoveryError("D-Bus-Unterstützung ist nicht verfügbar")
+
+    logger = logging.getLogger("IgnitionInputResolver")
+    bus_choice_normalized, bus_type = resolve_bus_configuration(bus_choice)
+    bus: Optional[MessageBus] = None
+    try:
+        connect_kwargs = {"bus_type": bus_type} if bus_type is not None else {}
+        bus = await MessageBus(**connect_kwargs).connect()
+        names = await _list_dbus_names(bus)
+        candidates = [name for name in names if name.startswith(DIGITAL_INPUT_SERVICE_PREFIX)]
+        logger.debug("Gefundene digitale Eingänge: %s", ", ".join(candidates))
+        for candidate in candidates:
+            for candidate_path in IGNITION_STATE_PATHS:
+                try:
+                    value = await _read_bus_value(bus, candidate, candidate_path)
+                except Exception as exc:
+                    logger.debug("Digitalinput %s%s konnte nicht gelesen werden: %s", candidate, candidate_path, exc)
+                    continue
+                if value is None:
+                    continue
+                logger.info("Zündplus-Quelle über %s%s gefunden", candidate, candidate_path)
+                return IgnitionServiceInfo(
+                    service_name=candidate,
+                    object_path=candidate_path,
+                    bus_choice=bus_choice_normalized,
+                )
+    finally:
+        if bus is not None:
+            disconnect = getattr(bus, "disconnect", None)
+            if callable(disconnect):
+                with contextlib.suppress(Exception):
+                    result = disconnect()
+                    if inspect.isawaitable(result):
+                        await result
+            wait_for_disconnect = getattr(bus, "wait_for_disconnect", None)
+            if callable(wait_for_disconnect):
+                with contextlib.suppress(Exception):
+                    await wait_for_disconnect()
+
+    raise VoltageServiceDiscoveryError("Kein geeigneter DigitalInput für Zündplus gefunden")
 
 
 def discover_battery_relay_service(bus_choice: str, preferred_service: str = "") -> str:
@@ -813,6 +901,47 @@ class DbusVoltageReader:
                     close()
             self._vedbus_bus = None
         self._next_attempt = time.monotonic() + self._reconnect_delay
+
+
+class DbusBinaryInputReader:
+    """Liest boolesche Zustände über den Victron D-Bus."""
+
+    def __init__(self, service_name: str, object_path: str, bus_choice: str = "system") -> None:
+        self._reader = DbusVoltageReader(service_name, object_path, bus_choice)
+
+    @property
+    def description(self) -> str:
+        return f"ignition:{self._reader.service_name}{self._reader.object_path}"
+
+    @property
+    def metadata(self) -> Dict[str, Any]:
+        data = dict(self._reader.metadata)
+        data["mode"] = "dbus-digitalinput"
+        return data
+
+    @property
+    def failure_count(self) -> int:
+        return self._reader.failure_count
+
+    @property
+    def last_error(self) -> str:
+        return self._reader.last_error
+
+    @property
+    def last_success(self) -> float:
+        return self._reader.last_success
+
+    async def initialize(self) -> None:
+        await self._reader.initialize()
+
+    async def read_state(self) -> Optional[bool]:
+        value = await self._reader.read_voltage()
+        if value is None:
+            return None
+        return normalize_bool(value)
+
+    async def close(self) -> None:
+        await self._reader.close()
 
 
 def _variant_signature(value: Any) -> str:
@@ -1659,18 +1788,19 @@ class VelibSettingsAdapter(BaseSettingsAdapter):
         return str(value)
 
 class GPIOController:
-    """Abstraktion über GPIO, um Tests ohne Hardware zu ermöglichen."""
+    """Interner Platzhalter für den lokalen GPIO-Ausgang.
+
+    Auf Venus OS wird der D+-Ausgang bevorzugt über vorhandene Relays geschaltet.
+    Diese Klasse hält nur den gewünschten Zustand vor, damit der GPIO-Modus
+    weiterhin kompatibel bleibt, ohne RPi.GPIO vorauszusetzen.
+    """
 
     def __init__(self, pin: int, enabled: bool = True) -> None:
         self._pin = pin
-        self._enabled = enabled and _RPiGPIO is not None
+        self._enabled = bool(enabled)
         self._state = False
         self._logger = logging.getLogger(self.__class__.__name__)
-        if self._enabled:
-            _RPiGPIO.setmode(_RPiGPIO.BCM)
-            _RPiGPIO.setup(self._pin, _RPiGPIO.OUT)
-        else:
-            self._logger.debug("GPIO wird im Simulationsmodus betrieben")
+        self._logger.debug("GPIOController läuft ohne RPi.GPIO-Unterstützung im internen Modus")
 
     @property
     def pin(self) -> int:
@@ -1679,24 +1809,11 @@ class GPIOController:
     def reconfigure(self, new_pin: int) -> None:
         if new_pin == self._pin:
             return
-        self._logger.info("GPIO wird von Pin %s auf Pin %s umkonfiguriert", self._pin, new_pin)
-        previous_state = self._state
-        if self._enabled:
-            _RPiGPIO.cleanup(self._pin)
-            _RPiGPIO.setup(new_pin, _RPiGPIO.OUT)
-            _RPiGPIO.output(
-                new_pin,
-                _RPiGPIO.HIGH if previous_state else _RPiGPIO.LOW,
-            )
+        self._logger.info("GPIO-Konfiguration wechselt von Pin %s auf Pin %s", self._pin, new_pin)
         self._pin = new_pin
 
     def write(self, state: bool) -> None:
-        if state == self._state:
-            return
-        self._logger.debug("GPIO-Pin %s wird auf %s gesetzt", self._pin, state)
-        self._state = state
-        if self._enabled:
-            _RPiGPIO.output(self._pin, _RPiGPIO.HIGH if state else _RPiGPIO.LOW)
+        self._state = bool(state)
 
     def read(self) -> bool:
         return self._state
@@ -1706,9 +1823,6 @@ class GPIOController:
         return f"gpio:{self._pin}"
 
     def close(self) -> None:
-        if self._enabled:
-            self._logger.debug("GPIO-Pin %s wird freigegeben", self._pin)
-            _RPiGPIO.cleanup(self._pin)
         self._state = False
 
 
@@ -1976,10 +2090,16 @@ class SwitchLogic:
         *,
         on_dependencies: Dict[str, bool],
         off_dependencies: Dict[str, bool],
+        voltage_on: Optional[bool] = None,
+        voltage_off: Optional[bool] = None,
+        on_delay: Optional[float] = None,
+        off_delay: Optional[float] = None,
     ) -> Dict[str, Any]:
         upper, lower = self._compute_thresholds()
-        voltage_on = voltage >= upper
-        voltage_off = voltage <= lower
+        voltage_on = voltage >= upper if voltage_on is None else bool(voltage_on)
+        voltage_off = voltage <= lower if voltage_off is None else bool(voltage_off)
+        effective_on_delay = self.on_delay if on_delay is None else max(0.0, float(on_delay))
+        effective_off_delay = self.off_delay if off_delay is None else max(0.0, float(off_delay))
         conditions_on: Dict[str, bool] = {"voltage": voltage_on}
         conditions_off: Dict[str, bool] = {"voltage": voltage_off}
         conditions_on.update(on_dependencies)
@@ -1992,7 +2112,7 @@ class SwitchLogic:
             if off_required:
                 if self.pending_state is not False:
                     self.pending_state = False
-                    self.deadline = now + self.off_delay
+                    self.deadline = now + effective_off_delay
                 elif self.deadline is not None and now >= self.deadline:
                     self.state = False
                     self.pending_state = None
@@ -2005,7 +2125,7 @@ class SwitchLogic:
             if on_ready:
                 if self.pending_state is not True:
                     self.pending_state = True
-                    self.deadline = now + self.on_delay
+                    self.deadline = now + effective_on_delay
                 elif self.deadline is not None and now >= self.deadline:
                     self.state = True
                     self.pending_state = None
@@ -2080,6 +2200,11 @@ class SimulatorStatus:
     voltage_source_failures: int = 0
     voltage_source_last_error: str = ""
     voltage_source_last_update: float = 0.0
+    use_ignition: bool = False
+    ignition_state: bool = False
+    ignition_source: str = "unavailable"
+    ignition_source_state: str = "unavailable"
+    ignition_source_message: str = ""
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -2119,6 +2244,11 @@ class SimulatorStatus:
             "voltage_source_failures": self.voltage_source_failures,
             "voltage_source_last_error": self.voltage_source_last_error,
             "voltage_source_last_update": self.voltage_source_last_update,
+            "use_ignition": self.use_ignition,
+            "ignition_state": self.ignition_state,
+            "ignition_source": self.ignition_source,
+            "ignition_source_state": self.ignition_source_state,
+            "ignition_source_message": self.ignition_source_message,
             "delays": {
                 "pending_state": self.pending_state if self.pending_state is not None else "none",
                 "deadline": self.deadline or 0.0,
@@ -2196,12 +2326,27 @@ class DPlusController:
         self._status.voltage_source_failures = 0
         self._status.voltage_source_last_error = "Keine Spannungsquelle verfügbar"
         self._status.voltage_source_last_update = 0.0
+        self._status.use_ignition = bool(self._settings.get("use_ignition", False))
+        self._status.ignition_state = False
+        self._status.ignition_source = "unavailable"
+        self._status.ignition_source_state = "unavailable"
+        self._status.ignition_source_message = "Zündquelle nicht aktiv"
         self._voltage_provider_details: Dict[str, Any] = {
             "state": "unavailable",
             "message": "Keine Spannungsquelle verfügbar",
             "available": False,
         }
         self._voltage_source_available = False
+        self._ignition_provider: Optional[Callable[[], Awaitable[Optional[bool]]]] = None
+        self._ignition_source_label = "unavailable"
+        self._ignition_provider_details: Dict[str, Any] = {
+            "state": "unavailable",
+            "message": "Zündquelle nicht aktiv",
+            "available": False,
+        }
+        self._ignition_source_available = False
+        self._ignition_state = False
+        self._emergency_off_latched = False
         self._relay_function_monitor: Optional[RelayFunctionMonitor] = None
         self._relay_function_assignments: Dict[str, str] = {}
         self._assigned_function_channel: Optional[str] = None
@@ -2647,6 +2792,38 @@ class DPlusController:
                 self._voltage_source_available = False
             await self._notify_status_locked()
 
+    async def set_ignition_provider(
+        self,
+        provider: Optional[Callable[[], Awaitable[Optional[bool]]]],
+        source_label: Optional[str] = None,
+        *,
+        source_info: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        async with self._lock:
+            self._ignition_provider = provider
+            if source_label is not None:
+                self._ignition_source_label = source_label
+            elif provider is None:
+                self._ignition_source_label = "unavailable"
+            combined_info = dict(source_info or {})
+            self._ignition_provider_details = combined_info
+            self._status.use_ignition = bool(self._settings.get("use_ignition", False))
+            self._status.ignition_source = self._ignition_source_label
+            if provider is None:
+                self._ignition_source_available = bool(combined_info.get("available", False))
+                self._ignition_state = False
+                self._status.ignition_state = False
+                self._status.ignition_source_state = str(combined_info.get("state", "unavailable"))
+                self._status.ignition_source_message = str(combined_info.get("message", "Zündquelle nicht aktiv"))
+            else:
+                self._ignition_source_available = False
+                self._ignition_state = False
+                self._status.ignition_state = False
+                self._status.ignition_source_state = str(combined_info.get("state", "initializing"))
+                self._status.ignition_source_message = str(combined_info.get("message", ""))
+            self._evaluate_locked()
+            await self._notify_status_locked()
+
     async def start(self) -> None:
         async with self._lock:
             if self._running:
@@ -2753,6 +2930,7 @@ class DPlusController:
             else:
                 self._status.manual_state = bool(self._settings.get("manual_state", False))
             self._status.output_mode = self._output_mode
+            self._status.use_ignition = bool(self._settings.get("use_ignition", False))
             self._status.output_target = getattr(
                 self._output_controller, "description", self._status.output_target
             )
@@ -2800,10 +2978,13 @@ class DPlusController:
         try:
             while True:
                 provider: Optional[VoltageProvider]
+                ignition_provider: Optional[Callable[[], Awaitable[Optional[bool]]]]
                 async with self._lock:
                     provider = self._voltage_provider
+                    ignition_provider = self._ignition_provider
                     interval = DEFAULT_STATUS_PUBLISH_INTERVAL
                     provider_details = dict(self._voltage_provider_details)
+                    ignition_details = dict(self._ignition_provider_details)
                 new_voltage: Optional[float] = None
                 provider_error: Optional[VoltageSourceError] = None
                 provider_state = (
@@ -2821,6 +3002,24 @@ class DPlusController:
                     except Exception as exc:  # pragma: no-cover - Schutz vor unbekannten Fehlern
                         provider_error = VoltageSourceError(f"Unbekannter Fehler: {exc}")
                         provider_state = "error"
+
+                ignition_value: Optional[bool] = None
+                ignition_error: Optional[VoltageSourceError] = None
+                ignition_state = (
+                    str(ignition_details.get("state", "unavailable"))
+                    if ignition_provider is None
+                    else "initializing"
+                )
+                if ignition_provider is not None:
+                    try:
+                        ignition_value = await ignition_provider()
+                        ignition_state = "ok" if ignition_value is not None else "no-data"
+                    except VoltageSourceError as exc:
+                        ignition_error = exc
+                        ignition_state = "error"
+                    except Exception as exc:
+                        ignition_error = VoltageSourceError(f"Unbekannter Fehler: {exc}")
+                        ignition_state = "error"
 
                 async with self._lock:
                     previous_state = self._status.voltage_source_state
@@ -2883,6 +3082,33 @@ class DPlusController:
                             )
                             self._voltage_source_available = True
                             self._voltage = float(new_voltage)
+                    self._status.use_ignition = bool(self._settings.get("use_ignition", False))
+                    previous_ignition_state = self._status.ignition_source_state
+                    previous_ignition_message = self._status.ignition_source_message
+                    if ignition_provider is None:
+                        self._status.ignition_source = self._ignition_source_label
+                        self._status.ignition_source_state = str(ignition_details.get("state", "unavailable"))
+                        self._status.ignition_source_message = str(ignition_details.get("message", "Zündquelle nicht aktiv"))
+                        self._ignition_source_available = bool(ignition_details.get("available", False))
+                        self._ignition_state = False
+                    elif ignition_error is not None:
+                        self._status.ignition_source = self._ignition_source_label
+                        self._status.ignition_source_state = "error"
+                        self._status.ignition_source_message = str(ignition_error)
+                        self._ignition_source_available = False
+                        self._ignition_state = False
+                    else:
+                        self._status.ignition_source = self._ignition_source_label
+                        self._status.ignition_source_state = ignition_state
+                        if ignition_value is None:
+                            self._status.ignition_source_message = "Keine Daten von der Zündquelle"
+                            self._ignition_source_available = False
+                            self._ignition_state = False
+                        else:
+                            self._status.ignition_source_message = ""
+                            self._ignition_source_available = True
+                            self._ignition_state = bool(ignition_value)
+                    self._status.ignition_state = self._ignition_state
                     self._evaluate_locked()
                     if (
                         previous_state != self._status.voltage_source_state
@@ -2898,6 +3124,21 @@ class DPlusController:
                             self._status.voltage_source,
                             self._status.voltage_source_state,
                             message_suffix,
+                        )
+                    if (
+                        previous_ignition_state != self._status.ignition_source_state
+                        or previous_ignition_message != self._status.ignition_source_message
+                    ):
+                        ignition_message_suffix = (
+                            f" ({self._status.ignition_source_message})"
+                            if self._status.ignition_source_message
+                            else ""
+                        )
+                        self._logger.info(
+                            "Status der Zündquelle %s: %s%s",
+                            self._status.ignition_source,
+                            self._status.ignition_source_state,
+                            ignition_message_suffix,
                         )
                     await self._notify_status_locked()
                     interval = DEFAULT_STATUS_PUBLISH_INTERVAL
@@ -2920,6 +3161,11 @@ class DPlusController:
             manual_state = True
         source_available = bool(self._voltage_provider) and self._voltage_source_available
         self._status.voltage_source_available = source_available
+        use_ignition = bool(self._settings.get("use_ignition", False))
+        ignition_available = bool(self._ignition_provider) and self._ignition_source_available
+        ignition_on = bool(self._ignition_state) if use_ignition and ignition_available else False
+        emergency_off_voltage = float(self._settings.get("emergency_off_voltage", 11.8))
+        emergency_triggered = use_ignition and ignition_on and self._voltage < emergency_off_voltage
         if manual_override:
             desired_state = simulator_enabled and manual_state
             switch_state = {
@@ -2941,6 +3187,7 @@ class DPlusController:
                 "on_delay_remaining": 0.0,
                 "off_delay_remaining": 0.0,
             }
+            self._emergency_off_latched = False
         else:
             on_dependencies: Dict[str, bool] = {}
             off_dependencies: Dict[str, bool] = {}
@@ -2949,12 +3196,29 @@ class DPlusController:
             on_dependencies["voltage_source"] = source_available
             if not source_available:
                 off_dependencies["voltage_source"] = True
-            switch_state = self._switch.evaluate(
-                self._voltage,
-                now,
-                on_dependencies=on_dependencies,
-                off_dependencies=off_dependencies,
-            )
+
+            if use_ignition:
+                on_dependencies["ignition"] = ignition_on
+                off_dependencies["ignition"] = not ignition_on
+                if emergency_triggered:
+                    off_dependencies["emergency_voltage"] = True
+                switch_state = self._switch.evaluate(
+                    self._voltage,
+                    now,
+                    on_dependencies=on_dependencies,
+                    off_dependencies=off_dependencies,
+                    voltage_on=self._voltage >= self._switch.on_threshold,
+                    voltage_off=emergency_triggered,
+                    off_delay=0.0 if not ignition_on else float(self._settings.get("emergency_off_delay_seconds", 2.0)),
+                )
+            else:
+                self._emergency_off_latched = False
+                switch_state = self._switch.evaluate(
+                    self._voltage,
+                    now,
+                    on_dependencies=on_dependencies,
+                    off_dependencies=off_dependencies,
+                )
         if switch_state["changed"]:
             self._logger.info(
                 "Ausgang (%s) wechselt zu %s (Spannung %.3f V)",
@@ -2980,7 +3244,13 @@ class DPlusController:
         self._status.output_target = getattr(
             self._output_controller, "description", self._status.output_target
         )
+        if use_ignition and switch_state["changed"] and not switch_state["state"] and not ignition_on:
+            self._logger.info("Zündung ist AUS – Ausgang wird sofort deaktiviert")
+        if use_ignition and switch_state["changed"] and not switch_state["state"] and emergency_triggered:
+            self._logger.warning("Not-Aus wegen Unterspannung aktiv (%.3f V < %.3f V)", self._voltage, emergency_off_voltage)
         self._status.voltage = self._voltage
+        self._status.use_ignition = use_ignition
+        self._status.ignition_state = ignition_on
         self._status.manual_override = manual_override
         self._status.manual_state = manual_state
         self._status.pending_state = switch_state["pending_state"]
@@ -3274,6 +3544,8 @@ async def run_async(args: argparse.Namespace) -> None:
         pass
 
     voltage_reader: Optional[DbusVoltageReader] = None
+    ignition_reader: Optional[DbusBinaryInputReader] = None
+
     async def configure_voltage_source(*, fail_hard: bool) -> bool:
         nonlocal voltage_reader, startup_failed, resolved_voltage_source, voltage_constraints
         if voltage_reader is not None:
@@ -3403,8 +3675,94 @@ async def run_async(args: argparse.Namespace) -> None:
         )
         return True
 
+    async def configure_ignition_source() -> bool:
+        nonlocal ignition_reader
+        if ignition_reader is not None:
+            with contextlib.suppress(Exception):
+                await ignition_reader.close()
+            ignition_reader = None
+
+        if not bool(merged_settings.get("use_ignition", False)):
+            await controller.set_ignition_provider(
+                None,
+                "disabled",
+                source_info={
+                    "state": "disabled",
+                    "message": "Zündplus ist deaktiviert",
+                    "mode": "dbus-digitalinput",
+                    "available": False,
+                },
+            )
+            return True
+
+        if args.no_dbus or BusType is None or MessageBus is None or Message is None:
+            await controller.set_ignition_provider(
+                None,
+                "unavailable",
+                source_info={
+                    "state": "unavailable",
+                    "message": "D-Bus-Unterstützung für Zündplus ist nicht verfügbar",
+                    "mode": "dbus-digitalinput",
+                    "available": False,
+                },
+            )
+            return False
+
+        bus_choice = merged_settings.get("dbus_bus", "system")
+        try:
+            ignition_source = await resolve_ignition_input_service(bus_choice)
+        except VoltageServiceDiscoveryError as exc:
+            await controller.set_ignition_provider(
+                None,
+                "unavailable",
+                source_info={
+                    "state": "not-found",
+                    "message": f"Keine Zündquelle gefunden: {exc}",
+                    "mode": "dbus-digitalinput",
+                    "available": False,
+                },
+            )
+            logging.getLogger("DPlusSim").warning("Zündplus aktiv, aber keine DigitalInput-Quelle gefunden: %s", exc)
+            return False
+
+        ignition_reader = DbusBinaryInputReader(
+            ignition_source.service_name,
+            ignition_source.object_path,
+            ignition_source.bus_choice,
+        )
+        try:
+            await ignition_reader.initialize()
+        except VoltageSourceError as exc:
+            await controller.set_ignition_provider(
+                None,
+                "unavailable",
+                source_info={
+                    "state": "error",
+                    "message": f"Zündquelle konnte nicht initialisiert werden: {exc}",
+                    "mode": "dbus-digitalinput",
+                    "available": False,
+                },
+            )
+            logging.getLogger("DPlusSim").warning("Initialisierung der Zündquelle fehlgeschlagen: %s", exc)
+            ignition_reader = None
+            return False
+
+        await controller.set_ignition_provider(
+            ignition_reader.read_state,
+            ignition_reader.description,
+            source_info={
+                **ignition_reader.metadata,
+                "reader": ignition_reader,
+                "available": False,
+            },
+        )
+        logging.getLogger("DPlusSim").info("Zündquelle aktiviert: %s", ignition_reader.description)
+        return True
+
     if not startup_failed:
         await configure_voltage_source(fail_hard=True)
+    if not startup_failed:
+        await configure_ignition_source()
 
 
     async def persist_settings(updates: Dict[str, Any]) -> None:
@@ -3427,12 +3785,18 @@ async def run_async(args: argparse.Namespace) -> None:
             merged_settings[key] = value
             await controller.update_settings({key: value})
             await configure_voltage_source(fail_hard=False)
+            await configure_ignition_source()
             return
         if key == "voltage_source_mode":
             merged_settings[key] = normalize_voltage_source_mode(value)
             if settings_backend is not None:
                 await settings_backend.apply({key: merged_settings[key]})
             await configure_voltage_source(fail_hard=False)
+            return
+        if key == "use_ignition":
+            merged_settings[key] = normalize_bool(value)
+            await controller.update_settings({key: merged_settings[key]})
+            await configure_ignition_source()
             return
         if key in {"service_path", "voltage_path"}:
             merged_settings[key] = str(value).strip()
@@ -3506,6 +3870,9 @@ async def run_async(args: argparse.Namespace) -> None:
             "voltage_source_mode",
             "service_path",
             "voltage_path",
+            "use_ignition",
+            "emergency_off_voltage",
+            "emergency_off_delay_seconds",
         )
         poll_bus: Optional[MessageBus] = None
         last_seen: Dict[str, Any] = {}
@@ -3583,9 +3950,12 @@ async def run_async(args: argparse.Namespace) -> None:
         if service is not None:
             service.emit_status(status)
         current_state = bool(status.get("gpio_state", False))
+        ignition_state = int(bool(status.get("ignition_state", False)))
+        payload: Dict[str, Any] = {"ignition_state": ignition_state}
         if current_state != last_output_state:
             last_output_state = current_state
-            await persist_settings({"output_state": int(current_state)})
+            payload["output_state"] = int(current_state)
+        await persist_settings(payload)
 
     controller.set_status_callback(handle_status)
 
@@ -3639,6 +4009,10 @@ async def run_async(args: argparse.Namespace) -> None:
         if voltage_reader is not None:
             with contextlib.suppress(Exception):
                 await voltage_reader.close()
+
+        if ignition_reader is not None:
+            with contextlib.suppress(Exception):
+                await ignition_reader.close()
 
         if bus is not None:
             disconnect = getattr(bus, "disconnect", None)
