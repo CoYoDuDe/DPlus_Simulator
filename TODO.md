@@ -6,8 +6,8 @@ Der DPlus-Simulator soll optional zusätzlich ein **Zündplus-Signal** auswerten
 
 Wichtig:
 - Das Zündplus-Feature ist **optional**
-- Der DPlus-Simulator muss **ohne ExpanderPiSetup weiter wie bisher funktionieren**
-- **Nur wenn** der Nutzer den neuen Schalter **„Zündplus verwenden“** aktiviert, wird eine zusätzliche Zündplus-Quelle benötigt
+- Der DPlus-Simulator muss **ohne Zusatzhardware weiter wie bisher funktionieren**
+- **Nur wenn** der Nutzer den neuen Schalter **„Zündplus verwenden“** aktiviert, wird ein GPIO-Eingang benötigt
 
 ---
 
@@ -20,8 +20,6 @@ Der DPlus-Simulator arbeitet exakt wie bisher:
 - Ausschalten bei `off_voltage`
 - Einschaltverzögerung über `on_delay_seconds`
 - Ausschaltverzögerung über `off_delay_seconds`
-
-Keine Abhängigkeit von ExpanderPiSetup.
 
 ---
 
@@ -82,34 +80,29 @@ Neue Settings unter `/Settings/Devices/DPlusSim/...`
   - Default: False
   - Bedeutung: Aktiviert die Zündplus-Logik
 
-- `IgnitionService`
-  - Typ: string
-  - Default: leer oder vordefinierter ExpanderPi-Dienst
-  - Bedeutung: D-Bus-Service der Zündplusquelle
+- `IgnitionGpioPin`
+  - Typ: int
+  - Default: z. B. 17
+  - Bedeutung: GPIO-Pin für Zündplus
 
-- `IgnitionPath`
-  - Typ: string
-  - Default: leer oder vordefinierter Pfad
-  - Bedeutung: D-Bus-Pfad der Zündplusquelle
+- `IgnitionActiveHigh`
+  - Typ: bool
+  - Default: True
+  - Bedeutung:
+    - True = HIGH = Zündung an
+    - False = LOW = Zündung an
 
 - `EmergencyOffVoltage`
   - Typ: float
   - Default: 11.8
-  - Bedeutung: Kritische Unterspannung bei aktiver Zündung
 
 - `EmergencyOffDelaySec`
   - Typ: float
   - Default: 2.0
-  - Bedeutung: Verzögerung für Not-Aus bei extremer Unterspannung
 
 ### Optional / diagnostisch
-- `IgnitionAvailable`
-  - Nur Status, nicht als persistente User-Einstellung
-  - Zeigt an, ob die Zündplusquelle erreichbar ist
-
 - `IgnitionState`
-  - Nur Status
-  - 0 / 1 bzw. False / True
+  - Status (0 / 1)
 
 ---
 
@@ -119,11 +112,12 @@ Neue Settings unter `/Settings/Devices/DPlusSim/...`
 - **Zündplus verwenden**
 - Default: AUS
 
-### Hinweistext im UI
-> Optionales Feature. Benötigt ExpanderPiSetup und geeignete Hardware zur Zündsignalerfassung. Das Zündsignal darf nicht direkt mit 12–14,5 V an den Eingang angeschlossen werden.
+Zusätzliche Felder:
+- GPIO Pin
+- Signal invertieren (ActiveHigh)
 
-Zusatz:
-> Ohne aktiviertes Zündplus läuft der DPlus-Simulator wie bisher rein spannungsbasiert.
+### Hinweistext im UI
+> Optionales Feature. GPIO darf nur mit 3.3V betrieben werden. Zündplus (12–14,5 V) muss über geeignete Schutzbeschaltung angepasst werden.
 
 ---
 
@@ -142,169 +136,113 @@ anzeigen:
 - Einschaltverzögerung
 - Not-Aus-Unterspannung
 - Not-Aus-Verzögerung
+- GPIO Pin
+- ActiveHigh
 
-ausblenden oder deaktivieren:
+ausblenden:
 - Ausschaltspannung
 - Ausschaltverzögerung
-
-Wichtig:
-Diese beiden Felder dürfen in diesem Modus nicht mehr als normale Ausschaltlogik missverstanden werden.
 
 ---
 
 ## Laufzeitverhalten / Fehlerbehandlung
 
 ### Wenn `UseIgnition = false`
-- keine Zündplusquelle nötig
-- keine Fehlermeldung wegen fehlender Ignition-Quelle
 - Verhalten wie bisher
 
 ### Wenn `UseIgnition = true`
-Dann muss der Dienst versuchen, die konfigurierte Zündplusquelle zu lesen.
+- GPIO wird gelesen
 
-#### Wenn Quelle vorhanden
-- normal arbeiten
-
-#### Wenn Quelle fehlt / nicht lesbar
-- Dienst **nicht abstürzen**
-- Status setzen:
-  - `ignition_available = false`
-  - sinnvolle Fehlermeldung im Status / Log
-- Einschalten blockieren
-- Ausgang bleibt aus
-
-Wichtig:
-Fehlende Ignition-Quelle darf nicht den gesamten DPlus-Dienst zerstören.
+#### Fehlerfälle
+- GPIO nicht lesbar:
+  - kein Crash
+  - als Zündung AUS behandeln
+  - Log-Eintrag erzeugen
 
 ---
 
-## D-Bus-Anbindung der Zündplusquelle
+## Hardware
 
-Der DPlus-Simulator soll **kein 12-V-Signal direkt messen**.
+Zündplus ist 12–14,5 V und darf **nicht direkt** an GPIO angeschlossen werden.
 
-Er soll einen fertigen, sauberen D-Bus-Zustand lesen:
+Empfohlene Lösungen:
 
-- `0` / `False` = Zündung aus
-- `1` / `True` = Zündung an
+- Optokoppler (empfohlen)
+- Transistorstufe
+- Relais (Signaltrennung)
 
-Die eigentliche Signalerfassung macht ExpanderPiSetup bzw. dessen Hardware-/Service-Seite.
-
----
-
-## Erwartete Schnittstelle zu ExpanderPiSetup
-
-DPlus_Simulator soll eine konfigurierbare Quelle lesen, z. B.:
-
-- Service: `com.victronenergy.expanderpi`
-- Path: `/DPlusSimulator/Ignition`
-
-oder eine andere endgültig definierte Kombination.
-
-Wichtig ist nur:
-- digital
-- stabil
-- eindeutig
-- 0/1
+GPIO erwartet:
+- max. 3.3V
+- sauberes digitales Signal
 
 ---
 
 ## Anpassungen im Code
 
 ## 1. Settings erweitern
-In `SETTINGS_DEFINITIONS` und `DEFAULT_SETTINGS` ergänzen:
 - `use_ignition`
-- `ignition_service`
-- `ignition_path`
+- `ignition_gpio_pin`
+- `ignition_active_high`
 - `emergency_off_voltage`
 - `emergency_off_delay_seconds`
 
 ## 2. Status erweitern
-In `SimulatorStatus` ergänzen:
-- `ignition_available`
 - `ignition_state`
-- `ignition_source`
-- ggf. `ignition_message`
 
-## 3. Zusätzlichen Reader für Zündplus bauen
-Ähnlich wie bei der Spannungsquelle:
-- D-Bus-Wert lesen
-- bool interpretieren
-- Fehler sauber behandeln
+## 3. GPIO-Reader implementieren
+- Pin initialisieren
+- Zustand lesen
+- ggf. invertieren
 
 ## 4. SwitchLogic erweitern
-Neue Logikpfade:
-- ohne Zündplus = alt
+- ohne Zündplus = unverändert
 - mit Zündplus:
   - On nur bei `ignition_on && voltage_ok`
   - Off sofort bei `ignition_off`
   - `off_voltage` ignorieren
-  - Not-Aus separat behandeln
+  - Not-Aus separat
 
-## 5. Polling / Refresh integrieren
-Bei aktivem Zündplus muss der Status regelmäßig aktualisiert werden.
-
-## 6. Logging ergänzen
-Beim Umschalten klar loggen:
+## 5. Logging
 - Zündung erkannt / verloren
 - Not-Aus aktiv
-- Ignition-Quelle nicht verfügbar
-
----
-
-## README / Dokumentation
-
-README ergänzen um:
-- Erklärung des optionalen Zündplus-Features
-- Hinweis, dass ExpanderPiSetup nur dafür nötig ist
-- Erklärung des Verhaltens bei aktiviertem Zündplus
-- Erklärung der Not-Aus-Unterspannung
-- Hinweis auf erforderliche Hardwareanpassung
 
 ---
 
 ## Testfälle
 
 ## Ohne Zündplus
-- Einschalten bei `on_voltage`
-- Ausschalten bei `off_voltage`
-- Verhalten identisch zum alten Stand
+- Verhalten unverändert
 
 ## Mit Zündplus
+
 ### Einschalten
 - Zündung aus + hohe Spannung -> darf NICHT einschalten
 - Zündung an + zu niedrige Spannung -> darf NICHT einschalten
 - Zündung an + hohe Spannung -> darf einschalten
 
 ### Ausschalten
-- Zündung an + Spannung fällt unter `off_voltage` -> darf NICHT ausschalten
-- Zündung aus -> muss SOFORT ausschalten
+- Zündung an + Spannung fällt -> bleibt EIN
+- Zündung aus -> sofort AUS
 
 ### Not-Aus
-- Zündung an + Spannung kurz unter Not-Aus-Schwelle (< Delay) -> darf NICHT ausschalten
-- Zündung an + Spannung länger unter Schwelle -> muss ausschalten
+- kurz unter Schwelle -> bleibt EIN
+- länger unter Schwelle -> AUS
 
 ### Fehlerfall
-- `UseIgnition=true`, aber Quelle fehlt -> Dienst bleibt am Leben, Ausgang bleibt aus, Fehlerstatus sichtbar
+- GPIO fehlt -> bleibt AUS, kein Crash
 
 ---
 
 ## Wichtige Randbedingungen
 
-- ExpanderPiSetup ist **optional**
-- Normale DPlus-Funktion darf nie von ExpanderPiSetup abhängig werden
-- Bei aktivem Zündplus soll der Nutzer im UI klar erkennen:
-  - dass diese Zusatzfunktion aktiv ist
-  - dass dafür Zusatzhardware / ExpanderPiSetup nötig ist
+- GPIO ist Standardlösung
+- Feature bleibt optional
 
 ---
 
 ## Empfehlung zur Umsetzung
 
-1. Zuerst Settings + Status + UI vorbereiten
-2. Dann D-Bus-Ignition-Quelle definieren
-3. Dann Logik implementieren
-4. Dann README und UI-Texte ergänzen
-5. Danach echte Fahrzeugtests mit:
-   - Zündung an / aus
-   - Spannungsabfall im Leerlauf
-   - Not-Aus-Unterspannung
+1. Settings + UI erweitern
+2. GPIO einlesen
+3. Logik integrieren
+4. Tests im Fahrzeug
