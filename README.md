@@ -5,71 +5,51 @@ D+ Simulator ist ein SetupHelper-Paket fuer Venus OS. Es installiert einen Diens
 ## Voraussetzungen
 
 - [SetupHelper](https://github.com/kwindrem/SetupHelper) von [kwindrem](https://github.com/kwindrem) aktuell installiert
-- `python3` verfuegbar
-- Fuer `OutputMode=relay`: `RpiGpioSetup` und `GuiMods`
-- Venus OS mit vorhandenem `dbus_fast` sowie `dbus-python`/`velib_python`
-- Eine verfuegbare Batteriespannung auf dem Victron-D-Bus, z. B. ueber BMV oder SmartShunt
 
-Dieses Paket baut auf [SetupHelper](https://github.com/kwindrem/SetupHelper) von [kwindrem](https://github.com/kwindrem) auf.
+# DPlus Simulator
+
+D+ Simulator ist ein SetupHelper-Paket für Venus OS.  
+Es simuliert ein D+-Signal abhängig von der Batteriespannung.
+
+## Voraussetzungen
+
+- SetupHelper installiert
+- Eine Batteriespannung auf dem Victron-D-Bus (z. B. BMV oder SmartShunt)
 
 ## Installation
 
-Repository im SetupHelper als Custom-Paket eintragen und ueber den PackageManager installieren.
+Repository im SetupHelper als Custom-Paket eintragen und über den PackageManager installieren.
 
-Das Paket nutzt den normalen SetupHelper-Standardpfad:
+## Zündplus (optional)
 
-- `IncludeHelpers`
-- FileSets fuer GUI-Dateien und Patch
-- `DbusSettingsList` fuer die Settings-Registrierung
-- Services aus `services/`
+Optional kann ein Zündplus-Signal berücksichtigt werden.
 
-## GUI
+Wenn aktiviert:
+- Einschalten nur bei:
+  - Spannung >= `OnVoltage`
+  - und Zündung AN
+- Ausschalten:
+  - Zündung AUS → sofort AUS
+- Während Zündung AN:
+  - `OffVoltage` wird ignoriert
 
-Die QML-Seite ist bewusst konservativ aufgebaut und nutzt nur Venus-kompatible GUI-v1-Elemente:
-
-- `MbPage`
-- `VisibleItemModel`
-- `MbItemOptions`
-- `MbEditBox`
-- `MbSwitch`
-- `VBusItem`
-
-Es werden keine dynamischen `QtDBus`-/`Qt.createQmlObject`-Konstrukte verwendet. Die Seite ist in einfache Untermenues aufgeteilt, damit sie auf aelteren Venus-GUI-Staenden robuster bleibt.
-
-## Wichtige Settings
-
-- `Enabled`
-- `GpioPin`
-- `OnVoltage`
-- `OffVoltage`
-- `OnDelaySec`
-- `OffDelaySec`
-- `ManualOverride`
-- `ManualState`
-- `OutputState`
-- `OutputMode`
-- `VoltageSourceMode`
-- `RelayChannel`
-- `RelayTarget`
-
-`ServicePath` und `VoltagePath` werden bei `VoltageSourceMode=auto` automatisch gesetzt. Bei `VoltageSourceMode=manual` koennen sie im GUI fuer eine gezielte Spannungsquelle vorgegeben werden.
+Not-Aus:
+- Bei sehr niedriger Spannung (`EmergencyOffVoltage`)
+- mit kurzer Verzögerung (`EmergencyOffDelaySec`)
 
 ## Hinweise
 
-- Der Dienst erwartet eine gueltige Starterspannungsquelle auf dem gewaehlten D-Bus.
-- Ohne gueltige Batteriespannung auf dem Victron-D-Bus startet der Simulator nicht produktiv.
-- Ueber `D+ Simulator aktiv` im GUI kann der Ausgang zu Testzwecken sauber ein- und ausgeschaltet werden, ohne die restlichen Einstellungen zu verlieren.
-- Ueber `Manuelle Steuerung` kann die Automatik uebersteuert werden. Dann schaltet `D+ Signal` den Ausgang direkt.
-- Wenn mehrere Batteriespannungen vorhanden sind, kann die Spannungsquelle im GUI auf `Manuell` gestellt und ueber D-Bus-Dienst und Spannungspfad gezielt ausgewaehlt werden.
-- Im Relay-Modus uebernimmt der Dienst die Funktionszuweisung und Ruecksicherung des konfigurierten Relais.
-- Der Dienst nutzt auf Venus OS fuer den asynchronen D-Bus-Teil `dbus_fast` und fuer Settings/VeDbus den vorhandenen `dbus-python`-/`velib_python`-Stack.
-- Der Standard ist `OutputMode=relay` mit dem letzten System-Relay-Kanal. Wenn keine passenden Relays ueber `RpiGpioSetup` vorhanden sind, kann im GUI auf `GPIO-Pin` umgestellt werden.
-- Wenn statt des System-Relais das Relay eines BMV-712 genutzt werden soll, muss das BMV-Relay in VictronConnect auf `Remote` gestellt sein. Je nach Firmware/App kann diese Einstellung auch als `MAN` oder manueller Remote-Modus erscheinen. In den anderen Relay-Modi steuert der BMV sein Relay selbst.
+- Der Dienst benötigt eine gültige Spannungsquelle auf dem D-Bus
+- Ohne Spannung arbeitet der Simulator nicht
+- Manuelle Steuerung im GUI möglich
+- BMV-Relay muss auf „Manuell“ stehen, wenn es verwendet wird
 
 ## Empfohlene Startwerte
 
-- `12V`-System:
-  `OnVoltage` `13.2`, `OffVoltage` `12.8`
-- `24V`-System:
-  `OnVoltage` `26.4`, `OffVoltage` `25.6`
-- Verzoegerungen koennen bei schwankender Ladespannung bewusst etwas hoeher gesetzt werden, z. B. an Ampeln oder bei geringer Lichtmaschinenleistung.
+12V-System:
+- `OnVoltage`: 13.2
+- `OffVoltage`: 12.8
+
+24V-System:
+- `OnVoltage`: 26.4
+- `OffVoltage`: 25.6
