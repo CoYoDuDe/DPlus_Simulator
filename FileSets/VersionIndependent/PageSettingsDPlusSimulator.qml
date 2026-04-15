@@ -14,6 +14,9 @@ MbPage {
 	property VBusItem outputStateItem: VBusItem { bind: settingsPath("/OutputState") }
 	property VBusItem servicePathItem: VBusItem { bind: settingsPath("/ServicePath") }
 	property VBusItem voltagePathItem: VBusItem { bind: settingsPath("/VoltagePath") }
+	property VBusItem useIgnitionItem: VBusItem { bind: settingsPath("/UseIgnition") }
+	property VBusItem ignitionStateItem: VBusItem { bind: settingsPath("/IgnitionState") }
+
 	property string selectedVoltageBind: {
 		var service = textValue(servicePathItem, "")
 		var path = textValue(voltagePathItem, "")
@@ -21,6 +24,7 @@ MbPage {
 			return service + path
 		return ""
 	}
+
 	property VBusItem currentSourceVoltageItem: VBusItem { bind: root.selectedVoltageBind }
 
 	function settingsPath(suffix) {
@@ -59,6 +63,16 @@ MbPage {
 		if (value < 0.2)
 			value = 0.2
 		return value
+	}
+
+	function boolValue(item) {
+		if (!item || !item.valid || item.value === undefined || item.value === null)
+			return false
+		return item.value === true || item.value === 1 || item.value === "1"
+	}
+
+	function ignitionStateText() {
+		return boolValue(ignitionStateItem) ? qsTr("AN") : qsTr("AUS")
 	}
 
 	model: VisibleItemModel {
@@ -166,6 +180,26 @@ MbPage {
 			writeAccessLevel: User.AccessInstaller
 		}
 
+		MbSwitch {
+			name: qsTr("Zündplus verwenden")
+			bind: root.settingsPath("/UseIgnition")
+			valueTrue: 1
+			valueFalse: 0
+			writeAccessLevel: User.AccessInstaller
+		}
+
+		MbItemText {
+			text: qsTr("Optionales Feature. Das Zündsignal wird aus vorhandenen Venus-OS-D-Bus-Digitaleingängen gelesen. Wenn keine Quelle gefunden wird, bleibt der Ausgang aus.")
+			wrapMode: Text.WordWrap
+			show: root.boolValue(root.useIgnitionItem)
+		}
+
+		MbItemText {
+			text: qsTr("Aktueller Zündstatus: %1").arg(root.ignitionStateText())
+			wrapMode: Text.WordWrap
+			show: root.boolValue(root.useIgnitionItem)
+		}
+
 		MbEditBox {
 			description: qsTr("Einschaltspannung [V]")
 			item.bind: root.settingsPath("/OnVoltage")
@@ -182,6 +216,7 @@ MbPage {
 			description: qsTr("Ausschaltspannung [V]")
 			item.bind: root.settingsPath("/OffVoltage")
 			maximumLength: 5
+			show: !root.boolValue(root.useIgnitionItem)
 			writeAccessLevel: User.AccessInstaller
 			onEditDone: {
 				var value = root.numericValue(newValue)
@@ -206,6 +241,33 @@ MbPage {
 			description: qsTr("Ausschaltverzögerung [s]")
 			item.bind: root.settingsPath("/OffDelaySec")
 			maximumLength: 6
+			show: !root.boolValue(root.useIgnitionItem)
+			writeAccessLevel: User.AccessInstaller
+			onEditDone: {
+				var value = root.positiveDelayValue(newValue)
+				if (value !== undefined)
+					item.setValue(value)
+			}
+		}
+
+		MbEditBox {
+			description: qsTr("Not-Aus-Unterspannung [V]")
+			item.bind: root.settingsPath("/EmergencyOffVoltage")
+			maximumLength: 5
+			show: root.boolValue(root.useIgnitionItem)
+			writeAccessLevel: User.AccessInstaller
+			onEditDone: {
+				var value = root.numericValue(newValue)
+				if (value !== undefined)
+					item.setValue(value)
+			}
+		}
+
+		MbEditBox {
+			description: qsTr("Not-Aus-Verzögerung [s]")
+			item.bind: root.settingsPath("/EmergencyOffDelaySec")
+			maximumLength: 6
+			show: root.boolValue(root.useIgnitionItem)
 			writeAccessLevel: User.AccessInstaller
 			onEditDone: {
 				var value = root.positiveDelayValue(newValue)
