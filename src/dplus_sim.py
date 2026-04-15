@@ -3824,23 +3824,33 @@ async def run_async(args: argparse.Namespace) -> None:
 
     async def handle_setting_update(key: str, value: Any) -> None:
         nonlocal voltage_reader, startup_failed, resolved_voltage_source, voltage_constraints
+
+        # Reine Status-/Interndaten nicht erneut als echte Einstellungsänderung verarbeiten,
+        # sonst entstehen Rückkopplungen und doppelte Schaltvorgänge.
+        if key in {"output_state", "ignition_state", "relay_function_backups"}:
+            merged_settings[key] = value
+            return
+
         if key == "dbus_bus":
             merged_settings[key] = value
             await controller.update_settings({key: value})
             await configure_voltage_source(fail_hard=False)
             await configure_ignition_source()
             return
+
         if key == "voltage_source_mode":
             merged_settings[key] = normalize_voltage_source_mode(value)
             if settings_backend is not None:
                 await settings_backend.apply({key: merged_settings[key]})
             await configure_voltage_source(fail_hard=False)
             return
+
         if key == "use_ignition":
             merged_settings[key] = normalize_bool(value)
             await controller.update_settings({key: merged_settings[key]})
             await configure_ignition_source()
             return
+
         if key in {"service_path", "voltage_path"}:
             merged_settings[key] = str(value).strip()
             expected = voltage_constraints.get(key)
@@ -3875,6 +3885,7 @@ async def run_async(args: argparse.Namespace) -> None:
                 return
             merged_settings[key] = expected
             return
+
         merged_settings[key] = value
         await controller.update_settings({key: value})
 
