@@ -17,3 +17,7 @@
 {"path":"/Settings/Devices/DPlusSim/ServicePath", "default":"com.victronenergy.system"}
 {"path":"/Settings/Devices/DPlusSim/VoltagePath", "default":"/Dc/Battery/Voltage"}
 {"path":"/Settings/Devices/DPlusSim/RelayFunctionBackups", "default":"{}"}
+{"path":"/Settings/Devices/DPlusSim/UseIgnition", "default":0, "min":0, "max":1}
+{"path":"/Settings/Devices/DPlusSim/EmergencyOffVoltage", "default":11.8, "min":0.0, "max":0.0}
+{"path":"/Settings/Devices/DPlusSim/EmergencyOffDelaySec", "default":2.0, "min":0.0, "max":0.0}
+{"path":"/Settings/Devices/DPlusSim/IgnitionState", "default":0, "min":0, "max":1}
