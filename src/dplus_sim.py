@@ -106,10 +106,8 @@ DEFAULT_RELAY_CHANNEL = "5"
 DEFAULT_RELAY_TARGET = "system"
 DEFAULT_VOLTAGE_SOURCE_MODE = "auto"
 DEFAULT_STATUS_PUBLISH_INTERVAL = 2.0
-
-
-RELAY_FUNCTION_TAG = "dplus-simulator"
-RELAY_FUNCTION_NEUTRAL = "none"
+RELAY_FUNCTION_TAG = "manual"
+RELAY_FUNCTION_NEUTRAL = "manual"
 
 
 DEV_FEATURE_FLAG_ENV_VAR = "DPLUS_SIM_DEV_MODE"
@@ -223,6 +221,22 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "min": 0,
         "max": 1,
     },
+    "force_on": {
+        "path": "/Settings/Devices/DPlusSim/ForceOn",
+        "type": "b",
+        "default": False,
+        "description": "Kompatibilitätsalias für manuelles Einschalten aus älteren UI-Versionen.",
+        "min": 0,
+        "max": 1,
+    },
+    "force_off": {
+        "path": "/Settings/Devices/DPlusSim/ForceOff",
+        "type": "b",
+        "default": False,
+        "description": "Kompatibilitätsalias für manuelles Ausschalten aus älteren UI-Versionen.",
+        "min": 0,
+        "max": 1,
+    },
     "output_state": {
         "path": "/Settings/Devices/DPlusSim/OutputState",
         "type": "b",
@@ -318,7 +332,6 @@ BATTERY_SERVICE_PREFIX = "com.victronenergy.battery."
 SYSTEM_STARTER_VOLTAGE_PATHS = ("/StarterVoltage",)
 SYSTEM_VOLTAGE_FALLBACK_PATHS = ("/Dc/Battery/Voltage",)
 BATTERY_VOLTAGE_PATHS = ("/Dc/1/Voltage", "/Dc/0/Voltage", "/StarterVoltage")
-BATTERY_RELAY_STATE_PATHS = ("/Relay/0/State", "/Relay/State")
 STARTER_VOLTAGE_PATH = "/Dc/Battery/Voltage"
 
 
@@ -501,71 +514,39 @@ async def resolve_bmv712_service(bus_choice: str) -> VoltageServiceInfo:
     return await resolve_starter_voltage_service(bus_choice)
 
 
-async def resolve_battery_relay_service(
-    bus_choice: str,
-    preferred_service: str = "",
-) -> VoltageServiceInfo:
-    """Sucht einen Batterie-/BMV-Dienst mit schaltbarem Relay."""
+def discover_battery_relay_service(bus_choice: str, preferred_service: str = "") -> str:
+    """Findet einen Battery-/BMV-Dienst mit schaltbarem Relay automatisch.
 
-    if BusType is None or MessageBus is None or Message is None:
-        raise VoltageServiceDiscoveryError("D-Bus-Unterstützung ist nicht verfügbar")
+    Bevorzugt den uebergebenen Dienst, falls er bereits auf einen Battery-Service zeigt.
+    Faellt sonst auf den ersten vorhandenen Battery-Service mit /Relay/0/State zurueck,
+    damit wechselnde ttyUSB-Nummern automatisch abgefangen werden.
+    """
 
-    logger = logging.getLogger("BatteryRelayResolver")
-    bus_choice_normalized, bus_type = resolve_bus_configuration(bus_choice)
-    bus: Optional[MessageBus] = None
+    preferred = str(preferred_service or "").strip()
+    candidates = []
+    if preferred.startswith(BATTERY_SERVICE_PREFIX):
+        candidates.append(preferred)
+    if dbus is None:
+        return preferred if preferred.startswith(BATTERY_SERVICE_PREFIX) else ""
     try:
-        connect_kwargs = {"bus_type": bus_type} if bus_type is not None else {}
-        bus = await MessageBus(**connect_kwargs).connect()
-    except Exception as exc:
-        raise VoltageServiceDiscoveryError(
-            f"Verbindung zum {bus_choice_normalized}-Bus fehlgeschlagen: {exc}"
-        ) from exc
-
-    try:
-        names = await _list_dbus_names(bus)
-        candidates = [name for name in names if name.startswith(BATTERY_SERVICE_PREFIX)]
-        if preferred_service and preferred_service in candidates:
-            ordered_candidates = [preferred_service] + [
-                name for name in candidates if name != preferred_service
-            ]
-        else:
-            ordered_candidates = candidates
-
-        logger.debug("Gefundene Victron-Batteriedienste für Relay-Suche: %s", ", ".join(ordered_candidates))
-        for candidate in ordered_candidates:
-            for relay_path in BATTERY_RELAY_STATE_PATHS:
-                try:
-                    value = await _read_bus_value(bus, candidate, relay_path)
-                except Exception as exc:
-                    logger.debug(
-                        "Relay bei %s%s konnte nicht gelesen werden: %s",
-                        candidate,
-                        relay_path,
-                        exc,
-                    )
-                    continue
-                if value is None:
-                    continue
-                logger.info("Battery-Relay über %s%s gefunden", candidate, relay_path)
-                return VoltageServiceInfo(
-                    service_name=candidate,
-                    object_path=relay_path,
-                    bus_choice=bus_choice_normalized,
-                )
-    finally:
-        if bus is not None:
-            disconnect = getattr(bus, "disconnect", None)
-            if callable(disconnect):
-                with contextlib.suppress(Exception):
-                    result = disconnect()
-                    if inspect.isawaitable(result):
-                        await result
-            wait_for_disconnect = getattr(bus, "wait_for_disconnect", None)
-            if callable(wait_for_disconnect):
-                with contextlib.suppress(Exception):
-                    await wait_for_disconnect()
-
-    raise VoltageServiceDiscoveryError("Kein Batterie-/BMV-Relay auf dem D-Bus gefunden")
+        bus = dbus.SystemBus() if (str(bus_choice or "system").strip().lower() != "session") else dbus.SessionBus()
+        dbus_obj = bus.get_object("org.freedesktop.DBus", "/org/freedesktop/DBus")
+        iface = dbus.Interface(dbus_obj, "org.freedesktop.DBus")
+        names = [str(name) for name in iface.ListNames()]
+        for name in names:
+            if name.startswith(BATTERY_SERVICE_PREFIX) and name not in candidates:
+                candidates.append(name)
+        for service in candidates:
+            try:
+                item = VeDbusItemImport(bus, service, "/Relay/0/State", createsignal=False) if VeDbusItemImport is not None else None
+                if item is not None:
+                    item.get_value()
+                    return service
+            except Exception:
+                continue
+    except Exception:
+        return preferred if preferred.startswith(BATTERY_SERVICE_PREFIX) else ""
+    return preferred if preferred.startswith(BATTERY_SERVICE_PREFIX) else ""
 
 
 def normalize_voltage_source_mode(value: Any) -> str:
@@ -1473,6 +1454,8 @@ class VelibSettingsAdapter(BaseSettingsAdapter):
         self._command_queue: "queue.Queue[tuple[str, Any]]" = queue.Queue()
         self._device: Optional[VelibSettingsDevice] = None
         self._logger = logging.getLogger(self.__class__.__name__)
+        self._last_snapshot: Dict[str, Any] = {}
+        self._poll_interval_ms = 250
 
     async def start(self) -> Dict[str, Any]:
         if (
@@ -1529,10 +1512,12 @@ class VelibSettingsAdapter(BaseSettingsAdapter):
                 key: self._coerce_value(meta["type"], self._device[key])
                 for key, meta in self._definitions.items()
             }
+            self._last_snapshot = dict(initial)
             if start_future is not None and not start_future.done():
                 self._loop.call_soon_threadsafe(start_future.set_result, initial)
             self._main_loop = GLib.MainLoop()
             GLib.timeout_add(100, self._process_commands)
+            GLib.timeout_add(self._poll_interval_ms, self._poll_settings_snapshot)
             self._main_loop.run()
         except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
             if start_future is not None and not start_future.done():
@@ -1579,6 +1564,21 @@ class VelibSettingsAdapter(BaseSettingsAdapter):
             return False
         return True
 
+    def _poll_settings_snapshot(self) -> bool:
+        device = self._device
+        if device is None or self._main_loop is None:
+            return False
+        try:
+            for key, meta in self._definitions.items():
+                current = self._coerce_value(meta["type"], device[key])
+                previous = self._last_snapshot.get(key)
+                if previous != current:
+                    self._last_snapshot[key] = current
+                    self._handle_change(key, previous, current)
+        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+            self._logger.debug("Polling der SettingsDevice-Werte fehlgeschlagen: %s", exc)
+        return True
+
     def _apply_updates_sync(self, updates: Dict[str, Any]) -> None:
         if self._device is None:
             raise RuntimeError("SettingsDevice ist nicht verfügbar")
@@ -1587,12 +1587,14 @@ class VelibSettingsAdapter(BaseSettingsAdapter):
                 continue
             typed_value = self._coerce_value(self._definitions[key]["type"], value)
             self._device[key] = typed_value
+            self._last_snapshot[key] = typed_value
 
     def _handle_change(self, key: str, _old: Any, new: Any) -> None:
         callback = self._callback
         if callback is None or self._loop is None:
             return
         value = self._coerce_value(self._definitions[key]["type"], new)
+        self._last_snapshot[key] = value
 
         def dispatch() -> None:
             result = callback(key, value)
@@ -1698,10 +1700,10 @@ class RelayController:
         self._channel = self._normalize_channel(channel)
         self._state = False
         self._lock = threading.Lock()
-        self._enabled = enabled and VeDbusItemImport is not None and dbus is not None
+        self._enabled = enabled and dbus is not None
         self._item: Optional[Any] = None
         self._bus: Optional[Any] = None
-        self._state_path_override = ""
+        self._bus_item_iface: Optional[Any] = None
         if not self._enabled:
             self._logger.debug("RelayController läuft im Simulationsmodus")
 
@@ -1724,8 +1726,7 @@ class RelayController:
     @property
     def description(self) -> str:
         if self._service.startswith(BATTERY_SERVICE_PREFIX):
-            suffix = self._state_path_override or f"/Relay/{self._channel or '0'}/State"
-            return f"relay:bmv:{suffix}"
+            return "relay:bmv/0"
         suffix = self._channel or "unset"
         return f"relay:{suffix}"
 
@@ -1762,13 +1763,6 @@ class RelayController:
         self._service = normalized
         self._reset()
 
-    def set_state_path(self, state_path: Optional[str]) -> None:
-        normalized = str(state_path or "").strip()
-        if normalized == self._state_path_override:
-            return
-        self._state_path_override = normalized
-        self._reset()
-
     def write(self, state: bool) -> None:
         state_bool = bool(state)
         if state_bool == self._state:
@@ -1786,11 +1780,12 @@ class RelayController:
             return self._state
         value: Any = None
         with self._lock:
-            item = self._ensure_item_locked()
-            if item is None:
+            iface = self._ensure_item_locked()
+            if iface is None:
                 return self._state
             try:
-                value = item.get_value()
+                value = iface.GetValue()
+                value = getattr(value, "value", value)
             except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
                 self._logger.debug("Konnte Relay-Zustand nicht lesen: %s", exc)
                 return self._state
@@ -1809,6 +1804,8 @@ class RelayController:
         with self._lock:
             if self._item is not None:
                 self._item = None
+            if self._bus_item_iface is not None:
+                self._bus_item_iface = None
             if self._bus is not None:
                 with contextlib.suppress(Exception):
                     close = getattr(self._bus, "close", None)
@@ -1820,11 +1817,18 @@ class RelayController:
         if not self._enabled or not self._channel:
             return
         with self._lock:
-            item = self._ensure_item_locked()
-            if item is None:
+            iface = self._ensure_item_locked()
+            if iface is None:
                 return
             try:
-                item.set_value(1 if state else 0)
+                result = iface.SetValue(dbus.Int32(1 if state else 0))
+                self._logger.info(
+                    "Relay-Write %s -> %s%s returned %s",
+                    int(state),
+                    self._service,
+                    f"/Relay/{self._channel}/State",
+                    result,
+                )
             except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
                 if force:
                     self._logger.warning(
@@ -1844,14 +1848,14 @@ class RelayController:
     def _ensure_item_locked(self) -> Optional[Any]:
         if not self._enabled or not self._channel or not self._service:
             return None
-        if self._item is not None:
-            return self._item
+        if self._bus_item_iface is not None:
+            return self._bus_item_iface
         assert dbus is not None
-        assert VeDbusItemImport is not None
         bus = dbus.SystemBus() if self._bus_choice == "system" else dbus.SessionBus()
-        path = self._state_path_override or f"/Relay/{self._channel}/State"
+        path = f"/Relay/{self._channel}/State"
         try:
-            item = VeDbusItemImport(bus, self._service, path, createsignal=False)
+            obj = bus.get_object(self._service, path)
+            iface = dbus.Interface(obj, "com.victronenergy.BusItem")
         except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
             self._logger.warning(
                 "Verbindung zu %s%s konnte nicht aufgebaut werden: %s",
@@ -1865,8 +1869,9 @@ class RelayController:
                     close()
             return None
         self._bus = bus
-        self._item = item
-        return item
+        self._bus_item_iface = iface
+        self._item = obj
+        return iface
 
 @dataclass
 class SwitchLogic:
@@ -2101,8 +2106,16 @@ class DPlusController:
             output_target="",
             relay_channel=str(self._settings.get("relay_channel", "")),
             relay_target=self._relay_target,
-            manual_override=bool(self._settings.get("manual_override", False)),
-            manual_state=bool(self._settings.get("manual_state", False)),
+            manual_override=bool(self._settings.get("manual_override", False))
+            or bool(self._settings.get("force_on", False))
+            or bool(self._settings.get("force_off", False)),
+            manual_state=(
+                False
+                if bool(self._settings.get("force_off", False))
+                else True
+                if bool(self._settings.get("force_on", False))
+                else bool(self._settings.get("manual_state", False))
+            ),
         )
         self._apply_output_configuration(initial=True)
         self._status.effective_on_voltage = upper_threshold
@@ -2130,15 +2143,9 @@ class DPlusController:
         }
         self._voltage_source_available = False
         self._relay_function_monitor: Optional[RelayFunctionMonitor] = None
-        self._battery_relay_service = ""
-        self._battery_relay_path = ""
         self._relay_function_assignments: Dict[str, str] = {}
-        self._relay_function_tag = RELAY_FUNCTION_TAG
-        self._relay_function_neutral = RELAY_FUNCTION_NEUTRAL
         self._assigned_function_channel: Optional[str] = None
-        self._relay_function_backups: Dict[str, str] = self._parse_relay_backups(
-            self._settings.get("relay_function_backups", "{}")
-        )
+        self._relay_function_backups: Dict[str, str] = {}
         self._relay_backup_persist: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None
         self._relay_backup_dirty = False
 
@@ -2155,53 +2162,23 @@ class DPlusController:
         monitor.set_callback(self._handle_relay_function_update)
 
     def _supports_relay_assignment(self) -> bool:
-        return (
-            self._output_mode == "relay"
-            and self._relay_target == "system"
-            and self._relay.service == SYSTEM_SERVICE_NAME
-        )
+        """RpiGpioSetup stellt manuell schaltbare Relays direkt bereit.
+
+        Für den aktuell unterstützten Venus-OS-/Raspberry-Pi-Pfad nutzt der
+        Dienst diese Relays unmittelbar. Eine automatische Umwidmung von
+        Relay-Funktionen über /Settings/Relays wird daher bewusst nicht
+        aktiviert.
+        """
+        return False
 
     def _resolve_relay_service(self) -> str:
         if self._relay_target == "system":
             return SYSTEM_SERVICE_NAME
-        if self._battery_relay_service:
-            return self._battery_relay_service
-        service_name = str(self._settings.get("service_path", "")).strip()
-        if service_name.startswith(BATTERY_SERVICE_PREFIX):
-            return service_name
-        return ""
-
-    def _resolve_relay_state_path(self) -> str:
-        if self._relay_target != "bmv":
-            return ""
-        return self._battery_relay_path
-
-    async def _refresh_battery_relay_service_locked(self) -> bool:
-        if self._relay_target != "bmv":
-            changed = bool(self._battery_relay_service or self._battery_relay_path)
-            self._battery_relay_service = ""
-            self._battery_relay_path = ""
-            return changed
         preferred_service = str(self._settings.get("service_path", "")).strip()
-        try:
-            resolved = await resolve_battery_relay_service(
-                str(self._settings.get("dbus_bus", "system")),
-                preferred_service=preferred_service,
-            )
-        except VoltageServiceDiscoveryError as exc:
-            self._logger.warning("BMV-/Battery-Relay konnte nicht automatisch gefunden werden: %s", exc)
-            resolved_service = ""
-            resolved_path = ""
-        else:
-            resolved_service = resolved.service_name
-            resolved_path = resolved.object_path
-        changed = (
-            resolved_service != self._battery_relay_service
-            or resolved_path != self._battery_relay_path
+        return discover_battery_relay_service(
+            self._settings.get("dbus_bus", "system"),
+            preferred_service=preferred_service,
         )
-        self._battery_relay_service = resolved_service
-        self._battery_relay_path = resolved_path
-        return changed
 
     async def initialize_relay_function_assignments(
         self, assignments: Dict[str, str]
@@ -2520,19 +2497,16 @@ class DPlusController:
         other_controller: Optional[Any] = None
         if target_mode == "relay":
             relay_service = self._resolve_relay_service()
-            relay_state_path = self._resolve_relay_state_path()
             channel = "0" if self._relay_target == "bmv" else str(self._settings.get("relay_channel") or "").strip()
             if not channel:
                 channel = DEFAULT_RELAY_CHANNEL
                 self._settings["relay_channel"] = channel
             self._relay.set_bus_choice(self._settings.get("dbus_bus", "system"))
             self._relay.set_service(relay_service)
-            self._relay.set_state_path(relay_state_path if self._relay_target == "bmv" else "")
             self._relay.reconfigure(channel)
             self._output_controller = self._relay
             other_controller = self._gpio
         else:
-            self._relay.set_state_path("")
             self._output_controller = self._gpio
             other_controller = self._relay
         if previous is not None and previous is not self._output_controller:
@@ -2712,8 +2686,17 @@ class DPlusController:
             self._status.off_voltage = self._resolve_off_voltage()
             self._status.on_delay_seconds = self._resolve_on_delay()
             self._status.off_delay_seconds = self._resolve_off_delay()
-            self._status.manual_override = bool(self._settings.get("manual_override", False))
-            self._status.manual_state = bool(self._settings.get("manual_state", False))
+            self._status.manual_override = (
+                bool(self._settings.get("manual_override", False))
+                or bool(self._settings.get("force_on", False))
+                or bool(self._settings.get("force_off", False))
+            )
+            if bool(self._settings.get("force_off", False)):
+                self._status.manual_state = False
+            elif bool(self._settings.get("force_on", False)):
+                self._status.manual_state = True
+            else:
+                self._status.manual_state = bool(self._settings.get("manual_state", False))
             self._status.output_mode = self._output_mode
             self._status.output_target = getattr(
                 self._output_controller, "description", self._status.output_target
@@ -2804,6 +2787,7 @@ class DPlusController:
                         available_flag = bool(provider_details.get("available", False))
                         failures = int(provider_details.get("failures", 0))
                         last_update_hint = float(provider_details.get("last_update", 0.0))
+                        source_mode = str(provider_details.get("mode", "dbus"))
                         self._status.voltage_source_state = state
                         self._status.voltage_source_message = message
                         self._status.voltage_source_available = available_flag
@@ -2813,7 +2797,8 @@ class DPlusController:
                             last_update_hint if last_update_hint else time.time()
                         )
                         self._voltage_source_available = available_flag
-                        self._voltage = 0.0
+                        if source_mode != "local":
+                            self._voltage = 0.0
                     elif provider_error is not None:
                         self._status.voltage_source_state = "error"
                         self._status.voltage_source_message = str(provider_error)
@@ -2870,8 +2855,14 @@ class DPlusController:
     def _evaluate_locked(self) -> None:
         now = time.monotonic()
         simulator_enabled = bool(self._settings.get("enabled", True))
-        manual_override = bool(self._settings.get("manual_override", False))
+        legacy_force_on = bool(self._settings.get("force_on", False))
+        legacy_force_off = bool(self._settings.get("force_off", False))
+        manual_override = bool(self._settings.get("manual_override", False)) or legacy_force_on or legacy_force_off
         manual_state = bool(self._settings.get("manual_state", False))
+        if legacy_force_off:
+            manual_state = False
+        elif legacy_force_on:
+            manual_state = True
         source_available = bool(self._voltage_provider) and self._voltage_source_available
         self._status.voltage_source_available = source_available
         if manual_override:
@@ -3132,72 +3123,26 @@ async def run_async(args: argparse.Namespace) -> None:
     merged_settings["dbus_bus"] = selected_bus
 
     if not args.no_dbus:
-        if (
+        if not (
             VelibSettingsDevice is not None
             and dbus is not None
             and DBusGMainLoop is not None
             and GLib is not None
         ):
-            try:
-                settings_backend = VelibSettingsAdapter(
-                    SETTINGS_DEFINITIONS,
-                    merged_settings.get("dbus_bus", "system"),
-                )
-                settings_overrides = await settings_backend.start()
-            except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
-                logging.getLogger("DPlusSim").warning(
-                    "SettingsDevice konnte nicht initialisiert werden: %s",
-                    exc,
-                )
-                settings_backend = None
-                settings_overrides = {}
-        if (
-            settings_backend is None
-            and BusType is not None
-            and Message is not None
-        ):
-            try:
-                if bus_type_for_connection is not None:
-                    settings_bus = await MessageBus(bus_type=bus_type_for_connection).connect()
-                else:
-                    settings_bus = await MessageBus().connect()
-                bridge = SettingsBridge(settings_bus, SETTINGS_DEFINITIONS)
-                settings_backend = DbusNextSettingsAdapter(bridge)
-                settings_overrides = await settings_backend.start()
-            except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
-                logging.getLogger("DPlusSim").warning(
-                    "Konnte Einstellungen nicht mit com.victronenergy.settings synchronisieren: %s",
-                    exc,
-                )
-                if settings_bus is not None:
-                    disconnect = getattr(settings_bus, "disconnect", None)
-                    disconnect_result: Any
-                    disconnect_started = False
-                    if callable(disconnect):
-                        try:
-                            disconnect_result = disconnect()
-                        except Exception:
-                            pass
-                        else:
-                            if inspect.isawaitable(disconnect_result) or asyncio.isfuture(
-                                disconnect_result
-                            ):
-                                try:
-                                    await disconnect_result
-                                except Exception:
-                                    pass
-                                else:
-                                    disconnect_started = True
-                            else:
-                                disconnect_started = True
-                    if disconnect_started:
-                        wait_for_disconnect = getattr(settings_bus, "wait_for_disconnect", None)
-                        if callable(wait_for_disconnect):
-                            with contextlib.suppress(Exception):
-                                await wait_for_disconnect()
-                settings_backend = None
-                settings_bus = None
-                settings_overrides = {}
+            raise RuntimeError(
+                "SettingsDevice/velib_python ist nicht verfügbar. "
+                "Die native Venus-OS-Version von DPlus benötigt SettingsDevice."
+            )
+        try:
+            settings_backend = VelibSettingsAdapter(
+                SETTINGS_DEFINITIONS,
+                merged_settings.get("dbus_bus", "system"),
+            )
+            settings_overrides = await settings_backend.start()
+        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+            raise RuntimeError(
+                f"SettingsDevice konnte nicht initialisiert werden: {exc}"
+            ) from exc
 
     merged_settings.update(settings_overrides)
     if args.bus:
@@ -3224,6 +3169,7 @@ async def run_async(args: argparse.Namespace) -> None:
         service: str = "",
         path: str = "",
         bus_choice: Optional[str] = None,
+        mode: str = "dbus",
     ) -> None:
         info = {
             "state": state,
@@ -3233,32 +3179,13 @@ async def run_async(args: argparse.Namespace) -> None:
             "bus": bus_choice
             if bus_choice is not None
             else merged_settings.get("dbus_bus", "system"),
-            "mode": "dbus",
+            "mode": mode,
             "available": False,
         }
         await controller.set_voltage_provider(None, "unavailable", source_info=info)
 
-    if (
-        not startup_failed
-        and settings_bus is not None
-        and MessageBus is not None
-        and Message is not None
-    ):
-        try:
-            relay_function_monitor = RelayFunctionMonitor(settings_bus)
-            controller.attach_relay_function_monitor(relay_function_monitor)
-            assignments = await relay_function_monitor.start()
-            await controller.initialize_relay_function_assignments(assignments)
-            logging.getLogger("DPlusSim").debug(
-                "Relay-Funktionsüberwachung aktiviert (%d Einträge)",
-                len(assignments),
-            )
-        except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
-            logging.getLogger("DPlusSim").warning(
-                "Überwachung der Relay-Funktionen konnte nicht initialisiert werden: %s",
-                exc,
-            )
-            relay_function_monitor = None
+    if False:
+        pass
 
     voltage_reader: Optional[DbusVoltageReader] = None
     async def configure_voltage_source(*, fail_hard: bool) -> bool:
@@ -3270,12 +3197,16 @@ async def run_async(args: argparse.Namespace) -> None:
         resolved_voltage_source = None
         voltage_constraints = {}
 
-        if (
-            args.no_dbus
-            or BusType is None
-            or MessageBus is None
-            or Message is None
-        ):
+        if args.no_dbus:
+            reason = (
+                "D-Bus ist per --no-dbus deaktiviert – lokaler Modus ohne "
+                "externe Spannungsquelle ist aktiv"
+            )
+            logging.getLogger("DPlusSim").warning(reason)
+            await mark_voltage_failure(reason, state="disabled", mode="local")
+            return False
+
+        if BusType is None or MessageBus is None or Message is None:
             reason = "D-Bus-Unterstützung nicht verfügbar – der Dienst wird beendet"
             logging.getLogger("DPlusSim").error(reason)
             await mark_voltage_failure(reason)
@@ -3408,59 +3339,131 @@ async def run_async(args: argparse.Namespace) -> None:
 
     controller.set_relay_backup_persist(persist_settings)
 
-    if settings_backend is not None:
-
-        async def handle_setting_update(key: str, value: Any) -> None:
-            nonlocal voltage_reader, startup_failed, resolved_voltage_source, voltage_constraints
-            if key == "dbus_bus":
-                merged_settings[key] = value
-                await controller.update_settings({key: value})
-                await configure_voltage_source(fail_hard=False)
-                return
-            if key == "voltage_source_mode":
-                merged_settings[key] = normalize_voltage_source_mode(value)
-                if settings_backend is not None:
-                    await settings_backend.apply({key: merged_settings[key]})
-                await configure_voltage_source(fail_hard=False)
-                return
-            if key in {"service_path", "voltage_path"}:
-                merged_settings[key] = str(value).strip()
-                expected = voltage_constraints.get(key)
-                if normalize_voltage_source_mode(
-                    merged_settings.get("voltage_source_mode", DEFAULT_VOLTAGE_SOURCE_MODE)
-                ) == "manual":
-                    await configure_voltage_source(fail_hard=False)
-                    return
-                if expected is None and resolved_voltage_source is not None:
-                    expected = (
-                        resolved_voltage_source.service_name
-                        if key == "service_path"
-                        else resolved_voltage_source.object_path
-                    )
-                normalized_value = str(value).strip()
-                if expected is None:
-                    logging.getLogger("DPlusSim").warning(
-                        "Keine automatische Starterspannungs-Erkennung aktiv – ignorierte Änderung %s=%s",
-                        key,
-                        normalized_value,
-                    )
-                    return
-                if normalized_value != expected:
-                    logging.getLogger("DPlusSim").error(
-                        "Einstellung %s kann nicht auf %s geändert werden – verwendet wird %s",
-                        key,
-                        normalized_value,
-                        expected,
-                    )
-                    if settings_backend is not None:
-                        await settings_backend.apply({key: expected})
-                    return
-                merged_settings[key] = expected
-                return
+    async def handle_setting_update(key: str, value: Any) -> None:
+        nonlocal voltage_reader, startup_failed, resolved_voltage_source, voltage_constraints
+        if key == "dbus_bus":
             merged_settings[key] = value
             await controller.update_settings({key: value})
+            await configure_voltage_source(fail_hard=False)
+            return
+        if key == "voltage_source_mode":
+            merged_settings[key] = normalize_voltage_source_mode(value)
+            if settings_backend is not None:
+                await settings_backend.apply({key: merged_settings[key]})
+            await configure_voltage_source(fail_hard=False)
+            return
+        if key in {"service_path", "voltage_path"}:
+            merged_settings[key] = str(value).strip()
+            expected = voltage_constraints.get(key)
+            if normalize_voltage_source_mode(
+                merged_settings.get("voltage_source_mode", DEFAULT_VOLTAGE_SOURCE_MODE)
+            ) == "manual":
+                await configure_voltage_source(fail_hard=False)
+                return
+            if expected is None and resolved_voltage_source is not None:
+                expected = (
+                    resolved_voltage_source.service_name
+                    if key == "service_path"
+                    else resolved_voltage_source.object_path
+                )
+            normalized_value = str(value).strip()
+            if expected is None:
+                logging.getLogger("DPlusSim").warning(
+                    "Keine automatische Starterspannungs-Erkennung aktiv – ignorierte Änderung %s=%s",
+                    key,
+                    normalized_value,
+                )
+                return
+            if normalized_value != expected:
+                logging.getLogger("DPlusSim").error(
+                    "Einstellung %s kann nicht auf %s geändert werden – verwendet wird %s",
+                    key,
+                    normalized_value,
+                    expected,
+                )
+                if settings_backend is not None:
+                    await settings_backend.apply({key: expected})
+                return
+            merged_settings[key] = expected
+            return
+        merged_settings[key] = value
+        await controller.update_settings({key: value})
 
+    if settings_backend is not None:
         settings_backend.set_callback(handle_setting_update)
+
+    async def _read_runtime_setting_value(poll_bus: MessageBus, key: str) -> Any:
+        meta = SETTINGS_DEFINITIONS[key]
+        reply = await poll_bus.call(
+            Message(
+                destination="com.victronenergy.settings",
+                path=meta["path"],
+                interface="com.victronenergy.BusItem",
+                member="GetValue",
+            )
+        )
+        value = SettingsBridge._unwrap_variant(reply.body[0]) if getattr(reply, "body", None) else meta["default"]
+        return SettingsBridge._coerce_value(meta["type"], value)
+
+    async def poll_runtime_settings() -> None:
+        tracked_keys = (
+            "enabled",
+            "gpio_pin",
+            "on_voltage",
+            "off_voltage",
+            "on_delay_seconds",
+            "off_delay_seconds",
+            "manual_override",
+            "manual_state",
+            "force_on",
+            "force_off",
+            "output_mode",
+            "relay_channel",
+            "relay_target",
+            "dbus_bus",
+            "voltage_source_mode",
+            "service_path",
+            "voltage_path",
+        )
+        poll_bus: Optional[MessageBus] = None
+        last_seen: Dict[str, Any] = {}
+        logger = logging.getLogger("DPlusSimSettingsPoll")
+        try:
+            if BusType is None or MessageBus is None or Message is None:
+                return
+            poll_bus_type = BusType.SYSTEM if merged_settings.get("dbus_bus", "system") == "system" else BusType.SESSION
+            poll_bus = await MessageBus(bus_type=poll_bus_type).connect()
+            while not shutdown_event.is_set():
+                changed: Dict[str, Any] = {}
+                for key in tracked_keys:
+                    try:
+                        value = await _read_runtime_setting_value(poll_bus, key)
+                    except Exception as exc:
+                        logger.debug("Konnte Einstellung %s nicht pollen: %s", key, exc)
+                        continue
+                    if key not in last_seen or last_seen[key] != value:
+                        last_seen[key] = value
+                        changed[key] = value
+                for key, value in changed.items():
+                    logger.info("Einstellung erkannt: %s=%r", key, value)
+                    await handle_setting_update(key, value)
+                await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Polling der DPlus-Einstellungen fehlgeschlagen: %s", exc)
+        finally:
+            if poll_bus is not None:
+                disconnect = getattr(poll_bus, "disconnect", None)
+                if callable(disconnect):
+                    with contextlib.suppress(Exception):
+                        result = disconnect()
+                        if inspect.isawaitable(result):
+                            await result
+                wait_for_disconnect = getattr(poll_bus, "wait_for_disconnect", None)
+                if callable(wait_for_disconnect):
+                    with contextlib.suppress(Exception):
+                        await wait_for_disconnect()
 
     bus: Optional[MessageBus] = None
     service: Optional[DPlusSimService] = None
@@ -3507,6 +3510,10 @@ async def run_async(args: argparse.Namespace) -> None:
     if not shutdown_event.is_set():
         await controller.start()
 
+    settings_poll_task: Optional[asyncio.Task[None]] = None
+    if not shutdown_event.is_set():
+        settings_poll_task = asyncio.create_task(poll_runtime_settings())
+
     waveform_task: Optional[asyncio.Task[None]] = None
     if debug_enabled and getattr(args, "simulate_waveform", 0.0) and not shutdown_event.is_set():
         waveform_task = asyncio.create_task(simulate_waveform(controller, args.simulate_waveform))
@@ -3522,6 +3529,11 @@ async def run_async(args: argparse.Namespace) -> None:
             waveform_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await waveform_task
+
+        if settings_poll_task is not None:
+            settings_poll_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await settings_poll_task
 
         if relay_function_monitor is not None:
             with contextlib.suppress(Exception):
@@ -3601,7 +3613,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--bus", choices=("system", "session"), help="Zu verwendender D-Bus", default=None)
     parser.add_argument("--dry-run", action="store_true", help="GPIO-Befehle nicht an Hardware weiterreichen")
     parser.add_argument(
-        "--no-dbus", action="store_true", help="D-Bus-Registrierung deaktivieren, auch wenn verfügbar"
+        "--no-dbus", action="store_true", help="D-Bus komplett deaktivieren und nur im lokalen Modus laufen"
     )
     parser.add_argument(
         "--enable-debug",

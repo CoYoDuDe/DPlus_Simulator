@@ -6,6 +6,8 @@
 {"path":"/Settings/Devices/DPlusSim/OffDelaySec", "default":5.0, "min":0.0, "max":0.0}
 {"path":"/Settings/Devices/DPlusSim/ManualOverride", "default":0, "min":0, "max":1}
 {"path":"/Settings/Devices/DPlusSim/ManualState", "default":0, "min":0, "max":1}
+{"path":"/Settings/Devices/DPlusSim/ForceOff", "default":0, "min":0, "max":1}
+{"path":"/Settings/Devices/DPlusSim/ForceOn", "default":0, "min":0, "max":1}
 {"path":"/Settings/Devices/DPlusSim/OutputState", "default":0, "min":0, "max":1}
 {"path":"/Settings/Devices/DPlusSim/OutputMode", "default":"relay"}
 {"path":"/Settings/Devices/DPlusSim/VoltageSourceMode", "default":"auto"}
@@ -13,5 +15,5 @@
 {"path":"/Settings/Devices/DPlusSim/RelayTarget", "default":"system"}
 {"path":"/Settings/Devices/DPlusSim/DbusBus", "default":"system"}
 {"path":"/Settings/Devices/DPlusSim/ServicePath", "default":"com.victronenergy.system"}
-{"path":"/Settings/Devices/DPlusSim/VoltagePath", "default":"/StarterVoltage"}
+{"path":"/Settings/Devices/DPlusSim/VoltagePath", "default":"/Dc/Battery/Voltage"}
 {"path":"/Settings/Devices/DPlusSim/RelayFunctionBackups", "default":"{}"}

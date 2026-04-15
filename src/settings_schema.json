@@ -36,45 +36,63 @@
       "type": "boolean",
       "description": "Manueller Ausgangszustand bei aktiver manueller Übersteuerung."
     },
+    "force_on": {
+      "type": "boolean",
+      "default": false,
+      "title": "Force On",
+      "description": "Kompatibilitätsalias für manuelles Einschalten des Ausgangs."
+    },
+    "force_off": {
+      "type": "boolean",
+      "default": false,
+      "title": "Force Off",
+      "description": "Kompatibilitätsalias für manuelles Ausschalten des Ausgangs."
+    },
     "output_state": {
       "type": "boolean",
       "description": "Aktueller Ausgangszustand des D+ Signals."
     },
     "output_mode": {
       "type": "string",
-      "enum": ["gpio", "relay"],
+      "enum": [
+        "gpio",
+        "relay"
+      ],
       "description": "Legt fest, ob der Simulator einen GPIO oder ein Relay schaltet.",
-      "default": "relay"
+      "default": "gpio"
     },
     "relay_channel": {
       "type": "string",
       "minLength": 0,
-      "description": "Relay-Kanal aus der gpiosetup-Konfiguration (z. B. 4brelays/0).",
-      "default": "5"
+      "description": "Relay-Kanal. Unterstützt einfache Kanalnummern wie 0-5 sowie kompatible Alias-/Pfadformen.",
+      "default": "4brelays/0"
     },
     "relay_target": {
       "type": "string",
-      "enum": ["system", "bmv"],
+      "enum": [
+        "system",
+        "bmv"
+      ],
       "description": "Wählt zwischen System-Relay und BMV-Relay.",
       "default": "system"
     },
     "dbus_bus": {
       "type": "string",
-      "enum": ["system", "session"],
-      "description": "Zu verwendender D-Bus.",
-      "default": "system"
+      "enum": [
+        "system",
+        "session"
+      ],
+      "description": "Zu verwendender D-Bus."
     },
     "service_path": {
       "type": "string",
-      "description": "Automatisch erkannter Dienst für die Starterspannung (schreibgeschützt).",
-      "readOnly": true,
-      "default": "com.victronenergy.system"
+      "description": "Dienst für die Spannungsquelle. Wird in Auto automatisch gesetzt und darf in Manual bearbeitet werden.",
+      "readOnly": false
     },
     "voltage_path": {
       "type": "string",
-      "description": "Spannungspfad der Starterspannung (schreibgeschützt, z. B. /StarterVoltage).",
-      "readOnly": true,
-      "default": "/StarterVoltage"
+      "description": "Objektpfad der Spannungsquelle. Wird in Auto automatisch gesetzt und darf in Manual bearbeitet werden (z. B. /StarterVoltage).",
+      "readOnly": false
     },
     "relay_function_backups": {
       "type": "string",
@@ -90,6 +108,8 @@
     "off_delay_seconds",
     "manual_override",
     "manual_state",
+    "force_on",
+    "force_off",
     "output_state",
     "output_mode",
     "relay_channel",

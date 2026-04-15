@@ -131,7 +131,7 @@ MbPage {
 		}
 
 		MbEditBox {
-			description: qsTr("Relay-Kanal")
+			description: qsTr("Relay-Kanal (0-5)")
 			item.bind: root.settingsPath("/RelayChannel")
 			maximumLength: 40
 			overwriteMode: false
