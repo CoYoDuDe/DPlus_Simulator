@@ -1711,6 +1711,11 @@ class RelayController:
     def _normalize_channel(channel: str) -> str:
         return normalize_relay_channel(channel)
 
+    @staticmethod
+    def _is_disconnected_error(exc: Exception) -> bool:
+        text = str(exc)
+        return "Connection is closed" in text or "org.freedesktop.DBus.Error.Disconnected" in text
+
     @property
     def channel(self) -> str:
         return self._channel
@@ -1780,15 +1785,24 @@ class RelayController:
             return self._state
         value: Any = None
         with self._lock:
-            iface = self._ensure_item_locked()
-            if iface is None:
-                return self._state
-            try:
-                value = iface.GetValue()
-                value = getattr(value, "value", value)
-            except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
-                self._logger.debug("Konnte Relay-Zustand nicht lesen: %s", exc)
-                return self._state
+            for attempt in range(2):
+                iface = self._ensure_item_locked()
+                if iface is None:
+                    return self._state
+                try:
+                    value = iface.GetValue()
+                    value = getattr(value, "value", value)
+                    break
+                except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+                    if attempt == 0 and self._is_disconnected_error(exc):
+                        self._logger.info(
+                            "Relay-D-Bus-Verbindung für %s wurde getrennt, verbinde erneut",
+                            self.description,
+                        )
+                        self._reset_locked()
+                        continue
+                    self._logger.debug("Konnte Relay-Zustand nicht lesen: %s", exc)
+                    return self._state
         if value is not None:
             try:
                 self._state = bool(int(value))
@@ -1802,48 +1816,65 @@ class RelayController:
 
     def _reset(self) -> None:
         with self._lock:
-            if self._item is not None:
-                self._item = None
-            if self._bus_item_iface is not None:
-                self._bus_item_iface = None
-            if self._bus is not None:
-                with contextlib.suppress(Exception):
-                    close = getattr(self._bus, "close", None)
-                    if callable(close):
-                        close()
-                self._bus = None
+            self._reset_locked()
+
+    def _reset_locked(self) -> None:
+        if self._item is not None:
+            self._item = None
+        if self._bus_item_iface is not None:
+            self._bus_item_iface = None
+        if self._bus is not None:
+            with contextlib.suppress(Exception):
+                close = getattr(self._bus, "close", None)
+                if callable(close):
+                    close()
+            self._bus = None
 
     def _sync_state(self, state: bool, *, force: bool) -> None:
         if not self._enabled or not self._channel:
             return
         with self._lock:
-            iface = self._ensure_item_locked()
-            if iface is None:
+            last_exc: Optional[Exception] = None
+            for attempt in range(2):
+                iface = self._ensure_item_locked()
+                if iface is None:
+                    return
+                try:
+                    result = iface.SetValue(dbus.Int32(1 if state else 0))
+                    self._logger.info(
+                        "Relay-Write %s -> %s%s returned %s",
+                        int(state),
+                        self._service,
+                        f"/Relay/{self._channel}/State",
+                        result,
+                    )
+                    return
+                except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
+                    last_exc = exc
+                    if attempt == 0 and self._is_disconnected_error(exc):
+                        self._logger.info(
+                            "Relay-D-Bus-Verbindung für %s wurde getrennt, erneuter Schreibversuch",
+                            self.description,
+                        )
+                        self._reset_locked()
+                        continue
+                    break
+            if last_exc is None:
                 return
-            try:
-                result = iface.SetValue(dbus.Int32(1 if state else 0))
-                self._logger.info(
-                    "Relay-Write %s -> %s%s returned %s",
-                    int(state),
-                    self._service,
-                    f"/Relay/{self._channel}/State",
-                    result,
+            if force:
+                self._logger.warning(
+                    "Setzen des Relay-Zustands auf '%s' für %s ist fehlgeschlagen: %s",
+                    state,
+                    self.description,
+                    last_exc,
                 )
-            except Exception as exc:  # pragma: no-cover - Laufzeitabhängig
-                if force:
-                    self._logger.warning(
-                        "Setzen des Relay-Zustands auf '%s' für %s ist fehlgeschlagen: %s",
-                        state,
-                        self.description,
-                        exc,
-                    )
-                else:
-                    self._logger.debug(
-                        "Synchronisieren des Relay-Zustands auf '%s' für %s ist fehlgeschlagen: %s",
-                        state,
-                        self.description,
-                        exc,
-                    )
+            else:
+                self._logger.debug(
+                    "Synchronisieren des Relay-Zustands auf '%s' für %s ist fehlgeschlagen: %s",
+                    state,
+                    self.description,
+                    last_exc,
+                )
 
     def _ensure_item_locked(self) -> Optional[Any]:
         if not self._enabled or not self._channel or not self._service:
