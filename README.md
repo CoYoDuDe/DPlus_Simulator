@@ -53,3 +53,13 @@ Not-Aus:
 24V-System:
 - `OnVoltage`: 26.4
 - `OffVoltage`: 25.6
+
+## Unterstützung
+
+Dieses Projekt wird unabhängig und privat entwickelt und kostenlos bereitgestellt. Freiwillige Unterstützung hilft bei Infrastruktur, Servern, Domains, Tests, Wartung und Weiterentwicklung.
+
+- [PayPal](https://paypal.me/CoYoDuDe)
+- [Buy Me a Coffee](https://www.buymeacoffee.com/CoYoDuDe)
+- [Weitere Projekte und Informationen](https://dnsmith.net/)
+
+Unterstützung ist freiwillig. Es gibt keinen Abo-Zwang und daraus entsteht kein Anspruch auf bestimmte Funktionen oder persönlichen Support.
